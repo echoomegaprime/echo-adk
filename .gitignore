@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+
+# Tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Runtime state (never commit ledgers, proofs, memory or SQLite state)
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+.echo-adk-state/
+state/
+/ledger/
+/proofs/
+/memory/
+
+# Secrets never live in this repo
+*.env
+.env*
+*.pem
+*.key

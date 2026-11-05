@@ -1,0 +1,48 @@
+[Unit]
+Description=echo-adk-api: Echo ADK loopback contract service (profile ECHO_ADK)
+Documentation=https://github.com/echoomegaprime/echo-adk/blob/main/deploy/README.md
+After=network-online.target echo-workers.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=forge
+Group=forge
+WorkingDirectory=/home/forge/echo-adk
+Environment=PYTHONUNBUFFERED=1
+Environment=ECHO_GATE_URL=http://127.0.0.1:8000
+Environment=ECHO_ADK_MODEL_ENDPOINT=http://127.0.0.1:11441
+Environment=ECHO_ADK_STATE_DIR=/var/lib/echo/echo-adk
+# Holds ECHO_ADK_GATE_KEY (and optionally ECHO_ADK_GATE_KEY_ENV, ECHO_ADK_MODEL_NAME, ECHO_ADK_DAILY_CAP_USD, ECHO_ADK_DEBUG).
+# Mode 0640 root:forge. Never committed.
+EnvironmentFile=-/etc/echo/echo-adk.env
+# --state-dir is a global option of the CLI and goes BEFORE the subcommand (tests/test_deploy_unit.py parses this line).
+ExecStart=/usr/bin/python3 -m echo_adk.cli --state-dir /var/lib/echo/echo-adk serve --port 8378 --agents-dir /home/forge/echo-adk/agents
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+StateDirectory=echo/echo-adk
+StateDirectoryMode=0750
+
+# Resource governance (FORGE hosts the gate and Postgres; this service is CPU-light)
+MemoryHigh=300M
+MemoryMax=400M
+TasksMax=256
+Nice=5
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+# state dir + the agents dir (POST/PUT/DELETE /agents write <agents-dir>/<name>.json)
+ReadWritePaths=/var/lib/echo/echo-adk /home/forge/echo-adk/agents
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+IPAddressAllow=localhost
+IPAddressDeny=any
+
+[Install]
+WantedBy=multi-user.target

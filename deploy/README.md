@@ -18,16 +18,23 @@ python3 -m echo_adk.cli validate agents/      # exit 0, "ok": true
 install -d -o forge -g forge -m 0750 /var/lib/echo/echo-adk
 install -m 0644 deploy/echo-adk-api.service /etc/systemd/system/echo-adk-api.service
 install -d -m 0750 /etc/echo
-# the ONLY place the gate key lives for this service; never in git, never in the unit
-umask 077; printf 'ECHO_ADK_GATE_KEY=%s\n' "$(grep SOVEREIGN_KEY /home/forge/.echo_sovereign_key | cut -d= -f2)" > /etc/echo/echo-adk.env
+# the ONLY place the gate key lives for this service; never in git, never in the unit.
+# Mint a dedicated SDK key in arcanum_sdk.sdk_keys with scopes_json limited to the read scopes the shipped
+# agents use (knowledge.read, docs.read, caps.read, monitor.read) and write it here:
+umask 077; printf 'ECHO_ADK_GATE_KEY=%s\n' "<scoped sdk key>" > /etc/echo/echo-adk.env
 chown root:forge /etc/echo/echo-adk.env; chmod 0640 /etc/echo/echo-adk.env
 systemctl daemon-reload
 systemctl enable --now echo-adk-api
 ```
 
-Prefer a dedicated scoped SDK key over the sovereign key: mint one in `arcanum_sdk.sdk_keys` with
-`scopes_json` limited to the read scopes the shipped agents use (`knowledge.read`, `docs.read`,
-`caps.read`, `monitor.read`) and put that in `/etc/echo/echo-adk.env` instead.
+Only fall back to the sovereign key (`/home/forge/.echo_sovereign_key`) for a short smoke test, and rotate to the
+scoped key before leaving the service enabled.
+
+The unit is hardened for the `qwen-local` lane: `IPAddressDeny=any` (loopback only) and `ProtectHome=read-only`
+mean the CLI lanes (`claude`, `codex`, `grok`, `argon`) cannot reach the network or their `$HOME` login stores
+from inside this service. That is the intended FORGE posture; CLI lanes are for workstation use of `echo-adk run`.
+`ReadWritePaths` covers the state dir and `/home/forge/echo-adk/agents` because `POST/PUT/DELETE /agents`
+write `<agents-dir>/<name>.json`.
 
 ## Verify
 

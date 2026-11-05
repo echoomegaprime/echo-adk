@@ -34,7 +34,8 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/var/lib/echo/echo-adk
+# state dir + the agents dir (POST/PUT/DELETE /agents write <agents-dir>/<name>.json)
+ReadWritePaths=/var/lib/echo/echo-adk /home/forge/echo-adk/agents
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true

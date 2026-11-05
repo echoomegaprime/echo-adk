@@ -28,7 +28,7 @@ classifiers = [
 [project.optional-dependencies]
 # Google ADK adapter. google-adk itself requires Python >= 3.11.
 adk = ["google-adk>=2.13,<3"]
-dev = ["pytest>=8", "ruff>=0.6"]
+dev = ["pytest>=8", "ruff>=0.17,<0.18"]
 
 [project.urls]
 Homepage = "https://github.com/echoomegaprime/echo-adk"

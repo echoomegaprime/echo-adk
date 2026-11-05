@@ -43,7 +43,7 @@ Legend: `[x]` delivered in this branch, `[~]` partially delivered (what is missi
 - [ ] **12. TS parity ADR** - not written.
 
 - [~] **13. echoBots OpenClaw channel + approvals** (branch `agent/echobots-openclaw-20261105`) - adapter, inbound
-  route, health gate, approvals with Approve/Deny, bridge hook, 34 tests. *Missing:* the bridge is not installed on
+  route, health gate, approvals with Approve/Deny, bridge hook, 42 tests. *Missing:* the bridge is not installed on
   the QUENCH gateway; QUENCH OpenClaw has only Discord configured (no Telegram account); the FORGE unit runs with the
   adapter off because the gateway and its CLI live on QUENCH; no live send was made.
 

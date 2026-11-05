@@ -28,7 +28,9 @@ from echo_adk.channels.openclaw import (
     parse_target,
     resolve_cli,
     scan_wedges,
+    scrub,
     validate_channels,
+    window_lines,
 )
 from echo_adk.core.policy import CapabilityRegistry
 from echo_adk.core.redact import redact
@@ -783,3 +785,110 @@ def test_bridge_hook_forwards_a_mapped_chat_message_end_to_end(svc, gateway, tmp
     messages = svc.bot_messages(bot["bot_id"], None, None)["messages"]
     assert [m["text"] for m in messages] == ["status of forge please"]
     assert svc.store.get_message(messages[0]["message_id"])["origin"] == CHAT
+
+
+# ----------------------------------------------------------------------------- review fixes (Codex pass)
+
+
+def test_scrub_removes_bot_tokens_and_url_paths(tmp_path, monkeypatch):
+    fake_token = "bot" + "1" * 9 + ":" + "Q" * 35  # Telegram shape, built at run time so no token-like literal ships
+    leaked = f"POST https://api.telegram.org/{fake_token}/sendMessage failed: 400 chat not found"
+    cleaned = scrub(leaked)
+    assert "Q" * 35 not in cleaned and "api.telegram.org/[path]" in cleaned and "chat not found" in cleaned
+    discord = "M" + "a" * 25 + "." + "b" * 6 + "." + "c" * 30
+    assert "a" * 25 not in scrub(f"discord rejected {discord}")
+    monkeypatch.setenv("FAKE_OPENCLAW_MODE", "fail")
+    monkeypatch.setenv("FAKE_OPENCLAW_ERROR", leaked)
+    result = CliTransport([sys.executable, str(HERE / "fake_openclaw.py")], GatewayProbe(log_dir=tmp_path)).send("telegram", "1", "x")
+    assert not result.ok and "Q" * 35 not in result.error
+
+
+def test_node_wrapper_scripts_are_refused(tmp_path):
+    entry = tmp_path / "openclaw.mjs"
+    entry.write_text("// entry\n", encoding="utf-8")
+    wrapper = tmp_path / "node.cmd"
+    wrapper.write_text("@echo off\n", encoding="utf-8")
+    with pytest.raises(ChannelError, match="node wrapper"):
+        resolve_cli(str(entry), str(wrapper))
+    assert resolve_cli(str(entry), sys.executable) == [sys.executable, str(entry)]
+
+
+def test_detached_origin_chat_never_receives_a_broadcast(svc, gateway):
+    bot = svc.create_bot(
+        {
+            "name": "two",
+            "agent": "forge-steward",
+            "channels": [{"kind": "openclaw", "target": CHAT}, {"kind": "openclaw", "target": "discord:channel:9"}],
+        }
+    )
+    svc.bots.resume(bot["bot_id"])
+    status, queued = svc.openclaw_inbound({"channel": "telegram", "target": "777", "sender": "5", "text": "private question"})
+    svc.set_bot_channels(bot["bot_id"], {"channels": [{"kind": "openclaw", "target": "discord:channel:9"}]})
+    svc.bots.tick()
+    assert settle(svc, queued["run_id"])["status"] == "done"
+    wait_for(lambda: svc.bots.get_bot(bot["bot_id"])["status"] == "idle")
+    svc.channels.flush()
+    assert gateway.sends == []
+
+
+def test_chat_decision_needs_a_delivered_notification(svc, script, gateway):
+    gateway.healthy = False
+    bot, _ = gated_bot(svc, script)
+    approval_id = only_approval(svc, bot["bot_id"])["approval_id"]
+    gateway.healthy = True
+    with pytest.raises(ApiError) as exc:
+        svc.openclaw_inbound({"channel": "telegram", "target": "777", "sender": APPROVER, "text": f"approve {approval_id}"})
+    assert exc.value.status == 403 and svc.get_approval(approval_id)["status"] == "pending"
+
+
+def test_malformed_url_is_a_config_error_not_a_crash(agents, tmp_path, registry, script, monkeypatch):
+    with pytest.raises(ChannelError):
+        OpenClawConfig(gateway_url="http://[::1")
+    with pytest.raises(ChannelError):
+        OpenClawConfig(gateway_url="http://127.0.0.1:99999")
+    monkeypatch.setenv("ECHO_ADK_OPENCLAW", "1")
+    monkeypatch.setenv("ECHO_ADK_OPENCLAW_URL", "http://[::1")
+    service = AdkService(
+        agents, tmp_path / "s", model_factory=script.factory, broker=FakeBroker(), registry=registry, start_scheduler=False
+    )
+    try:
+        assert service.channels.health().state().startswith("unavailable: openclaw adapter off: invalid configuration")
+    finally:
+        service.close()
+
+
+def test_rejected_message_does_not_poison_duplicate_detection(svc):
+    body = {"channel": "telegram", "target": "777", "sender": "5", "text": "hello", "message_id": "tg-77"}
+    with pytest.raises(ApiError):
+        svc.openclaw_inbound(body)  # not mapped yet
+    bot_with_chat(svc)
+    status, queued = svc.openclaw_inbound(body)
+    assert status == 202 and queued["kind"] == "message"
+
+
+def test_failed_mint_consumes_the_approval_as_denied(svc, script, agents):
+    bot, _ = gated_bot(svc, script)
+    approval_id = only_approval(svc, bot["bot_id"])["approval_id"]
+    steward = svc.agents["forge-steward"]
+    svc.agents["forge-steward"] = type(steward)(**{**steward.__dict__, "capabilities": ["echo.caps.search"]})
+    with pytest.raises(ApiError) as exc:
+        svc.decide_approval(approval_id, "approve", {})
+    assert exc.value.status == 409
+    final = svc.get_approval(approval_id)
+    assert final["status"] == "denied" and "allowlist" in final["reason"] and "result_run_id" not in final
+
+
+def test_missing_log_dir_fails_closed_and_long_logs_cover_the_window(fake_gateway_http, tmp_path):
+    url, routes = fake_gateway_http
+    routes.update({"/healthz": (200, {"ok": True}, 0.0), "/readyz": (200, {"ready": True}, 0.0)})
+    missing = GatewayProbe(url, log_dir=tmp_path / "missing", timeout_s=0.5).check()
+    assert missing.state().startswith("unavailable: wedge check impossible: gateway log dir")
+    log = tmp_path / "big.log"
+    now = datetime.now(timezone.utc)
+    old = log_line(now - timedelta(hours=1), "old line " + "x" * 200)
+    fresh = log_line(now - timedelta(minutes=1), "fresh line " + "y" * 200)
+    log.write_text("\n".join([old] * 3000 + [fresh] * 3000) + "\n", encoding="utf-8")  # ~1.5 MB of fresh lines
+    lines, covered = window_lines(log, (now - timedelta(minutes=15)).timestamp(), first_bytes=200_000, max_bytes=4_000_000)
+    assert covered and any("old line" in line for line in lines)
+    _, short = window_lines(log, (now - timedelta(minutes=15)).timestamp(), first_bytes=100_000, max_bytes=200_000)
+    assert short is False

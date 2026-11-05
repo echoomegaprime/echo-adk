@@ -199,7 +199,6 @@ class BotManager:
         if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not 0 <= cap <= MAX_DAILY_CAP_USD:
             raise BotError("daily_cost_cap_usd must be between 0 and 5")
         channels = validate_channels(body.get("channels"))
-        self.service.channels.check_unique(channels, None)
         bot = {
             "bot_id": new_id(),
             "name": name,
@@ -216,7 +215,9 @@ class BotManager:
             "last_run_at": None,
             "last_error": None,
         }
-        self.store.put_bot(bot)
+        with self._lock:  # uniqueness check and insert are one step, so two creates cannot claim one chat
+            self.service.channels.check_unique(channels, None)
+            self.store.put_bot(bot)
         log.info("bot_created", bot_id=bot["bot_id"], agent=agent.name)
         return self._public(bot)
 

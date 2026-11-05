@@ -22,7 +22,8 @@ def main() -> int:
         time.sleep(30)
         return 0
     if mode == "fail":
-        print(json.dumps({"ok": False, "deliveryStatus": "failed", "error": "chat not found; token=abc123secretvalue"}))
+        detail = os.environ.get("FAKE_OPENCLAW_ERROR") or "chat not found; token=abc123secretvalue"
+        print(json.dumps({"ok": False, "deliveryStatus": "failed", "error": detail}))
         return 1
     print(json.dumps({"ok": True, "channel": "telegram", "messageId": "4242"}))
     return 0

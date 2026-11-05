@@ -14,7 +14,7 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
   Default deny (TTL), single use, one-run Lease, no always-allow, no tier >= 2 grant from chat, no token in a message.
 - `CliTransport` (`openclaw message send`, no shell, `.cmd` shim resolved to `node openclaw.mjs`).
 - `deploy/openclaw-hook/echo-adk-bridge`: OpenClaw internal hook that forwards mapped chats to the inbound route.
-- 34 tests with a stand-in gateway, a fake gateway HTTP server, a fake `openclaw` CLI and log fixtures.
+- 42 tests with a stand-in gateway, a fake gateway HTTP server, a fake `openclaw` CLI and log fixtures.
 
 ## [0.1.0] - 2026-11-04
 

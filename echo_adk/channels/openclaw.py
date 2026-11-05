@@ -158,7 +158,11 @@ def _preferred(targets: Iterable[str]) -> list[str]:
 
 def validate_gateway_url(url: str) -> str:
     """Loopback ``http://`` origin only: OpenClaw binds loopback and echo-adk never crosses a network to reach it."""
-    parsed = urllib.parse.urlsplit(url or "")
+    try:
+        parsed = urllib.parse.urlsplit(url or "")
+        parsed.port  # noqa: B018 - raises ValueError for a malformed port
+    except ValueError:
+        raise ChannelError("ECHO_ADK_OPENCLAW_URL is not a valid URL") from None
     if parsed.scheme != "http" or not parsed.hostname:
         raise ChannelError("ECHO_ADK_OPENCLAW_URL must be an http:// origin")
     if parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in ("", "/"):
@@ -343,6 +347,12 @@ def scan_wedges(lines: Iterable[str], now: float, window_s: float = DEFAULT_WEDG
 
 def tail_lines(path: Path, max_bytes: int = 1_000_000) -> list[str]:
     """Complete lines in the last ``max_bytes`` of a file (read-only; the partial first line is dropped)."""
+    lines, _ = _tail(path, max_bytes)
+    return lines
+
+
+def _tail(path: Path, max_bytes: int) -> tuple[list[str], bool]:
+    """``(lines, truncated)``: truncated when the file is longer than ``max_bytes``."""
     with open(path, "rb") as handle:
         handle.seek(0, os.SEEK_END)
         size = handle.tell()
@@ -350,7 +360,25 @@ def tail_lines(path: Path, max_bytes: int = 1_000_000) -> list[str]:
         handle.seek(start)
         raw = handle.read(max_bytes)
     lines = raw.decode("utf-8", "replace").splitlines()
-    return lines[1:] if start > 0 and lines else lines
+    return (lines[1:] if start > 0 and lines else lines), start > 0
+
+
+def window_lines(path: Path, since: float, *, first_bytes: int = 1_000_000, max_bytes: int = 8_000_000) -> tuple[list[str], bool]:
+    """Lines covering ``since`` .. now, doubling the tail until its first dated line is older than ``since``.
+
+    Returns ``(lines, covered)``; ``covered`` is False when even ``max_bytes`` did not reach back to ``since``.
+    """
+    size = first_bytes
+    while True:
+        lines, truncated = _tail(path, size)
+        if not truncated:
+            return lines, True
+        first = next((ts for ts in (_line_epoch(line) for line in lines[:50]) if ts is not None), None)
+        if first is not None and first <= since:
+            return lines, True
+        if size >= max_bytes:
+            return lines, False
+        size = min(size * 2, max_bytes)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -420,20 +448,29 @@ class GatewayProbe:
         return Health(True, "", note=note, checked_at=now)
 
     def _scan(self, now: float) -> tuple[Optional[str], Optional[str]]:
+        """``(wedge_or_failure, note)``. Without the log the wedge modes are invisible, so that is a failure too."""
         if not self.log_dir.is_dir():
-            return None, f"wedge log scan off: {self.log_dir} not found"
+            return f"wedge check impossible: gateway log dir {self.log_dir} not found (set ECHO_ADK_OPENCLAW_LOG_DIR)", None
         files = []
-        for moment in (now, now - self.window_s):
+        for moment in (now - self.window_s, now):
             path = self.log_dir / f"openclaw-{datetime.fromtimestamp(moment):%Y-%m-%d}.log"
             if path.is_file() and path not in files:
                 files.append(path)
         lines: list[str] = []
+        covered = True
         try:
             for path in files:
-                lines.extend(tail_lines(path))
+                chunk, whole = window_lines(path, now - self.window_s)
+                lines.extend(chunk)
+                covered = covered and whole
         except OSError as exc:
-            return None, f"wedge log scan failed: {type(exc).__name__}"
-        return scan_wedges(lines, now, self.window_s), None if files else "no gateway log for today yet"
+            return f"wedge check impossible: gateway log unreadable ({type(exc).__name__})", None
+        note = None
+        if not files:
+            note = "no gateway log for today yet"
+        elif not covered:
+            note = f"gateway log tail is shorter than the {int(self.window_s // 60)} min wedge window"
+        return scan_wedges(lines, now, self.window_s), note
 
 
 # --------------------------------------------------------------------------- transport
@@ -452,6 +489,31 @@ class Transport(Protocol):
     def send(self, channel: str, dest: str, text: str, buttons: Optional[Sequence[Mapping[str, Any]]] = None) -> SendResult: ...
 
 
+_SCRIPT_SUFFIXES = (".cmd", ".bat", ".ps1", ".vbs", ".wsf", ".com")
+
+# CLI diagnostics can echo a provider URL; Telegram puts the bot token in the path (/bot<id>:<secret>/...),
+# Discord bot tokens are three dot-joined base64 segments. Neither shape is in the core redactor.
+_TELEGRAM_TOKEN = re.compile(r"\b(?:bot)?\d{5,12}:[A-Za-z0-9_-]{30,}")
+_DISCORD_TOKEN = re.compile(r"\b[MNO][A-Za-z\d_-]{23,27}\.[A-Za-z\d_-]{6}\.[A-Za-z\d_-]{27,}")
+_URL = re.compile(r"\bhttps?://[^\s\"'<>]+")
+
+
+def scrub(text: str) -> str:
+    """Redaction for CLI diagnostics: core patterns, Telegram/Discord bot tokens, and URLs reduced to scheme+host."""
+    out = _TELEGRAM_TOKEN.sub("[REDACTED]", str(text))
+    out = _DISCORD_TOKEN.sub("[REDACTED]", out)
+    out = _URL.sub(_url_host_only, out)
+    return redact(out)[0]
+
+
+def _url_host_only(match: re.Match[str]) -> str:
+    try:
+        parts = urllib.parse.urlsplit(match.group(0))
+        return f"{parts.scheme}://{parts.hostname or '?'}/[path]"
+    except ValueError:
+        return "[url]"
+
+
 def resolve_cli(cli: Optional[str] = None, node: Optional[str] = None) -> list[str]:
     """argv prefix for the OpenClaw CLI.
 
@@ -465,7 +527,7 @@ def resolve_cli(cli: Optional[str] = None, node: Optional[str] = None) -> list[s
         raise ChannelError("openclaw CLI not found (set ECHO_ADK_OPENCLAW_CLI)")
     entry = Path(path)
     suffix = entry.suffix.lower()
-    if suffix in (".cmd", ".bat", ".ps1"):
+    if suffix in _SCRIPT_SUFFIXES:
         candidate = entry.parent / "node_modules" / "openclaw" / "openclaw.mjs"
         if not candidate.is_file():
             raise ChannelError(f"refusing to run the {suffix} shim {entry.name}; set ECHO_ADK_OPENCLAW_CLI to openclaw.mjs")
@@ -476,6 +538,8 @@ def resolve_cli(cli: Optional[str] = None, node: Optional[str] = None) -> list[s
         runtime = node or shutil.which("node")
         if not runtime or not Path(runtime).is_file():
             raise ChannelError("node not found for the openclaw CLI (set ECHO_ADK_OPENCLAW_NODE)")
+        if Path(runtime).suffix.lower() in _SCRIPT_SUFFIXES:  # a node.cmd wrapper would bring cmd.exe back
+            raise ChannelError(f"refusing the {Path(runtime).suffix} node wrapper; set ECHO_ADK_OPENCLAW_NODE to node.exe")
         return [str(runtime), str(entry)]
     return [str(entry)]
 
@@ -563,7 +627,7 @@ class CliTransport:
             detail = detail[0] if detail else ""
         if isinstance(detail, Mapping):
             detail = detail.get("message") or json.dumps(detail)[:200]
-        message = redact(str(detail))[0][:300] or "no detail"
+        message = scrub(str(detail))[:300] or "no detail"
         return SendResult(False, f"openclaw message send failed (exit {done.returncode}): {message}")
 
 
@@ -769,10 +833,11 @@ class OpenClawChannels:
                 runtime.last_error = error[:300]
                 runtime.dropped += 1
         if job.approval_id:
-            doc = self.store.get_approval(job.approval_id)
-            if doc is not None:
-                doc["notified"] = {"target": job.target, "state": "sent" if ok else error[:300], "at": now_iso()}
-                self.store.put_approval(doc)
+            with self._lock:  # read-modify-write under the decision lock so a decision is never overwritten
+                doc = self.store.get_approval(job.approval_id)
+                if doc is not None:
+                    doc["notified"] = {"target": job.target, "state": "sent" if ok else error[:300], "at": now_iso()}
+                    self.store.put_approval(doc)
 
     def _deliver(self, job: _Job) -> None:
         health = self.health()
@@ -794,7 +859,10 @@ class OpenClawChannels:
         targets = [s["target"] for s in bot.get("channels") or []]
         if not targets:
             return
-        if origin in targets:
+        if origin is not None:
+            if origin not in targets:  # the chat was detached mid-turn: never hand its answer to another chat
+                log.info("openclaw_reply_dropped", bot_id=bot.get("bot_id"), why="origin chat no longer mapped")
+                return
             targets = [origin]
         clean = redact(f"[{bot['name']}] {text}")[0]
         for target in targets:
@@ -836,34 +904,41 @@ class OpenClawChannels:
             return 200, {"kind": "decision", "approval": approval}
         if callback is not None:
             raise ChannelError("unknown callback value")
-        if message_id is not None:
-            key = f"{target}|{message_id}"
+        key = f"{target}|{message_id}" if message_id is not None else None
+        if key is not None:  # reserve the id; released again when the message is not accepted
             with self._lock:
                 if key in self._seen:
                     return 200, {"kind": "duplicate", "message_id": message_id}
                 self._seen[key] = None
                 while len(self._seen) > 2000:
                     self._seen.popitem(last=False)
-        bot = self._bot_for(target)
-        if bot is None:
-            raise _api_error(404, f"no bot is mapped to {target}")
-        spec = next(s for s in bot.get("channels") or [] if s["target"] == target)
-        allow = spec.get("allow_from")
-        if allow is not None and sender not in allow:
-            from ..api.service import ApiError
-
-            raise ApiError(403, "invalid", "sender is not in this channel's allow_from list")
-        queued = self.service.bots.message(bot["bot_id"], {"text": value}, origin=target)
+        try:
+            bot = self._bot_for(target)
+            if bot is None:
+                raise _api_error(404, f"no bot is mapped to {target}")
+            spec = next(s for s in bot.get("channels") or [] if s["target"] == target)
+            allow = spec.get("allow_from")
+            if allow is not None and sender not in allow:
+                raise _api_error(403, "sender is not in this channel's allow_from list")
+            queued = self.service.bots.message(bot["bot_id"], {"text": value}, origin=target)
+        except Exception:
+            if key is not None:
+                with self._lock:
+                    self._seen.pop(key, None)
+            raise
         return 202, {"kind": "message", "bot_id": bot["bot_id"], **queued}
 
     # ------------------------------------------------------------------ approvals
     def _expire(self, doc: dict[str, Any]) -> dict[str, Any]:
-        if doc["status"] == "pending" and doc.get("expires_at") and parse_iso(doc["expires_at"]) <= datetime.now(timezone.utc):
-            doc["status"] = "expired"
-            doc["decided_at"] = now_iso()
-            doc["decided_by"] = "default-deny"
-            self.store.put_approval(doc)
-        return doc
+        """Default deny: a pending approval past ``expires_at`` becomes ``expired`` (re-read under the lock)."""
+        if doc["status"] != "pending" or not doc.get("expires_at") or parse_iso(doc["expires_at"]) > datetime.now(timezone.utc):
+            return doc
+        with self._lock:
+            fresh = self.store.get_approval(doc["approval_id"]) or doc
+            if fresh["status"] == "pending":
+                fresh.update(status="expired", decided_at=now_iso(), decided_by="default-deny")
+                self.store.put_approval(fresh)
+            return fresh
 
     @staticmethod
     def public(doc: Mapping[str, Any]) -> dict[str, Any]:
@@ -921,34 +996,32 @@ class OpenClawChannels:
             doc = self.store.get_approval(approval_id) if is_id(approval_id) else None
             if doc is None:
                 raise _api_error(404, f"approval {approval_id} not found")
-            self._expire(doc)
+            doc = self._expire(doc)
             if doc["status"] == "notice":
                 raise _api_error(409, "this is a notice; it has nothing to approve")
             if doc["status"] != "pending":
                 raise _api_error(409, f"approval is already {doc['status']}")
             if via is not None:
                 target, sender = via
-                notified = (doc.get("notified") or {}).get("target")
-                if target != notified:
-                    log.warning("openclaw_decision_refused", approval_id=approval_id, why="wrong chat")
-                    raise _api_error(403, "decisions are accepted only from the chat the approval was sent to")
+                notified = doc.get("notified") or {}
+                if target != notified.get("target") or notified.get("state") != "sent":
+                    log.warning("openclaw_decision_refused", approval_id=approval_id, why="not the delivered chat")
+                    raise _api_error(403, "decisions are accepted only from the chat the approval was delivered to")
                 if sender not in self._approvers_for(target, doc.get("bot_id")):
                     log.warning("openclaw_decision_refused", approval_id=approval_id, why="not an approver")
                     raise _api_error(403, "sender is not an approver for this chat")
             who = "api" if via is None else f"openclaw:{via[0].split(':', 1)[0]}:{via[1]}"
+            doc.update(status="approved" if decision == "approve" else "denied", decided_at=now_iso(), decided_by=who)
+            # Consumed before anything is minted: a crash between the two can never replay the approval.
+            self.store.put_approval(doc)
             if decision == "approve":
                 try:
                     doc["result_run_id"] = self._mint(doc)
                 except Exception as exc:
-                    doc.update(status="denied", decided_at=now_iso(), decided_by=who, reason=str(exc)[:300])
+                    doc.update(status="denied", reason=str(exc)[:300])
                     self.store.put_approval(doc)
                     raise _api_error(409, f"approval could not be applied: {exc}")
-                doc["status"] = "approved"
-            else:
-                doc["status"] = "denied"
-            doc["decided_at"] = now_iso()
-            doc["decided_by"] = who
-            self.store.put_approval(doc)
+                self.store.put_approval(doc)
         log.info("approval_decided", approval_id=approval_id, status=doc["status"], by=who.split(":")[0])
         notified = doc.get("notified") or {}
         if notified.get("target") and (via is not None or notified.get("state") == "sent"):

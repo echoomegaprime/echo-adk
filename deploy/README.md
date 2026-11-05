@@ -60,6 +60,26 @@ ss -tlnp 'sport = :8378'                                               # 127.0.0
 | Ledger / proofs / memory | `/var/lib/echo/echo-adk/{ledger,proofs,memory}/`, SQLite `echo-adk.sqlite3` (WAL) |
 | Rollback | `git -C /home/forge/echo-adk checkout <previous sha> && sudo systemctl restart echo-adk-api`; state is forward-compatible within 0.x |
 
+### Command line shape
+
+`--state-dir`, `--caps-file` and `--models-config` are **global** options of the CLI and go before the subcommand:
+
+```
+/usr/bin/python3 -m echo_adk.cli --state-dir /var/lib/echo/echo-adk serve --port 8378 --agents-dir /home/forge/echo-adk/agents
+```
+
+`serve`, `run` and `mcp` also accept `--state-dir` after the subcommand (same meaning, wins over the global one),
+so the older `serve --state-dir ...` form starts too. `tests/test_deploy_unit.py` parses the unit's `ExecStart`
+through the real argparse parser; a unit that would crash-loop fails CI.
+
+### Environment precedence
+
+`EnvironmentFile=-/etc/echo/echo-adk.env` is read after the unit's `Environment=` lines, so values in the env file
+override them: `ECHO_ADK_GATE_KEY` lives only there (0600/0640, never in the unit, never in git), and an
+`ECHO_GATE_URL=` line there overrides the unit default `http://127.0.0.1:8000`. The broker reads `ECHO_GATE_URL`
+when it is first used and `ECHO_ADK_GATE_KEY` on every call; a non-loopback gate additionally needs
+`ECHO_ADK_GATE_ALLOW_REMOTE=1`.
+
 Port 8378 is the contract default (Prime `adk.baseUrl`/`bots.baseUrl`). Register it in the FORGE port
 registry before enabling so the port guard does not flag it (see the FORGE port-drift note in the fleet
 memory).

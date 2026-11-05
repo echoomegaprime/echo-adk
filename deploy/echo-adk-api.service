@@ -16,7 +16,8 @@ Environment=ECHO_ADK_STATE_DIR=/var/lib/echo/echo-adk
 # Holds ECHO_ADK_GATE_KEY (and optionally ECHO_ADK_GATE_KEY_ENV, ECHO_ADK_MODEL_NAME, ECHO_ADK_DAILY_CAP_USD, ECHO_ADK_DEBUG).
 # Mode 0640 root:forge. Never committed.
 EnvironmentFile=-/etc/echo/echo-adk.env
-ExecStart=/usr/bin/python3 -m echo_adk.cli serve --port 8378 --state-dir /var/lib/echo/echo-adk --agents-dir /home/forge/echo-adk/agents
+# --state-dir is a global option of the CLI and goes BEFORE the subcommand (tests/test_deploy_unit.py parses this line).
+ExecStart=/usr/bin/python3 -m echo_adk.cli --state-dir /var/lib/echo/echo-adk serve --port 8378 --agents-dir /home/forge/echo-adk/agents
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=30

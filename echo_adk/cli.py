@@ -47,13 +47,18 @@ def _emit(payload: Any) -> None:
     sys.stdout.flush()
 
 
+def _state_dir(args: argparse.Namespace) -> str:
+    """``--state-dir`` is a global option; ``run``/``serve``/``mcp`` also accept it after the subcommand (that one wins)."""
+    return getattr(args, "serve_state_dir", None) or args.state_dir
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     agent = load_agent(args.agent)
     registry = _registry(args)
     config = _models_config(args)
     model = build_model(agent.lane.model, config)
     broker = GateBroker()
-    ledger = Ledger(args.state_dir)
+    ledger = Ledger(_state_dir(args))
     budget = agent.lane.budget
     if args.max_steps:
         import dataclasses
@@ -111,7 +116,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
     config = _models_config(args)
     service = AdkService(
         args.agents_dir,
-        args.state_dir,
+        _state_dir(args),
         registry=_registry(args),
         model_factory=lambda model_id: build_model(model_id, config),
         workers=args.workers,
@@ -137,7 +142,7 @@ def cmd_mcp(args: argparse.Namespace) -> int:
 
     agent = load_agent(args.agent)
     broker = GateBroker()
-    ledger = Ledger(args.state_dir)
+    ledger = Ledger(_state_dir(args))
     McpServer(agent, broker=broker, registry=_registry(args), ledger=ledger).serve(sys.stdin, sys.stdout)
     return 0
 
@@ -155,6 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("prompt")
     run.add_argument("--max-steps", type=int, default=None)
     run.add_argument("--full", action="store_true", help="print the whole run (steps, proof, spent)")
+    run.add_argument("--state-dir", dest="serve_state_dir", default=None, help="same as the global --state-dir")
     run.set_defaults(func=cmd_run)
 
     validate = sub.add_parser("validate", help="validate an agents directory (or one file) and optional skills dir")
@@ -167,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve_p.add_argument("--port", type=int, default=8378)
     serve_p.add_argument("--agents-dir", default="agents")
     serve_p.add_argument("--workers", type=int, default=4)
+    serve_p.add_argument("--state-dir", dest="serve_state_dir", default=None, help="same as the global --state-dir")
     serve_p.set_defaults(func=cmd_serve)
 
     card = sub.add_parser("card", help="print the agent card (A2A by default, or echo-a2a/1.0)")
@@ -177,6 +184,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     mcp = sub.add_parser("mcp", help="serve one agent's capabilities as MCP tools over stdio")
     mcp.add_argument("agent")
+    mcp.add_argument("--state-dir", dest="serve_state_dir", default=None, help="same as the global --state-dir")
     mcp.set_defaults(func=cmd_mcp)
     return parser
 

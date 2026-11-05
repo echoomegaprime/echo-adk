@@ -19,6 +19,7 @@ from typing import Any, Optional
 from .. import PROFILE, SERVICE_NAME, __version__
 from ..agents import load_agents_dir
 from ..bots.manager import BotError, BotManager
+from ..channels.openclaw import MAX_LIST_APPROVALS, ChannelError, OpenClawChannels, OpenClawConfig, Transport
 from ..core.broker import Broker, GateBroker
 from ..core.ledger import Ledger, MemoryStore
 from ..core.log import get_logger
@@ -88,6 +89,8 @@ class AdkService:
         daily_cap_usd: Optional[float] = None,
         start_scheduler: bool = True,
         scheduler_tick_s: float = 2.0,
+        openclaw: Optional[OpenClawConfig] = None,
+        channel_transport: Optional[Transport] = None,
     ) -> None:
         self.agents_dir = Path(agents_dir)
         self.state_dir = Path(state_dir)
@@ -102,6 +105,12 @@ class AdkService:
         self._executor = ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="echo-adk-run")
         self._stops: dict[str, threading.Event] = {}
         self._lock = threading.RLock()
+        config_error: Optional[str] = None
+        try:
+            openclaw_config = openclaw if openclaw is not None else OpenClawConfig.from_env()
+        except ChannelError as exc:  # a bad env never takes the bots down: the adapter stays off and says why
+            openclaw_config, config_error = OpenClawConfig(), str(exc)
+        self.channels = OpenClawChannels(self, openclaw_config, transport=channel_transport, config_error=config_error)
         self.bots = BotManager(self, tick_s=scheduler_tick_s)
         if start_scheduler:
             self.bots.start()
@@ -123,6 +132,7 @@ class AdkService:
 
     def close(self) -> None:
         self.bots.stop()
+        self.channels.stop()
         for event in list(self._stops.values()):
             event.set()
         self._executor.shutdown(wait=True, cancel_futures=True)
@@ -347,10 +357,21 @@ class AdkService:
         *,
         message_id: Optional[str],
         group_id: Optional[str] = None,
+        lease_override: Optional[Mapping[str, Any]] = None,
     ) -> str:
-        """Create a queued run for a bot turn using the bot's own Lease template. Not submitted."""
+        """Create a queued run for a bot turn using the bot's own Lease template. Not submitted.
+
+        ``lease_override`` (``{scopes, max_uses, ttl_s}``, in-process only) is what an approved
+        notification mints for one re-run; the bot's template is never changed by it.
+        """
         run_id = new_id()
         template = bot["lease"]
+        if lease_override is not None:
+            scopes = list(lease_override["scopes"])
+            outside = [s for s in scopes if s not in agent.capabilities or "*" in s]
+            if outside:
+                raise ValidationError(f"lease override scopes {outside} are outside the agent allowlist")
+            template = {"scopes": scopes, "max_uses": int(lease_override["max_uses"]), "ttl_s": int(lease_override["ttl_s"])}
         budget = Budget(
             min(template["max_uses"], agent.lane.budget.max_calls),
             min(agent.lane.budget.max_cost_usd, float(bot["daily_cost_cap_usd"])),
@@ -572,6 +593,34 @@ class AdkService:
 
     def bot_messages(self, bot_id: str, since: Optional[str], limit: Any) -> dict[str, Any]:
         return self.bots.messages(bot_id, since, _limit(limit, MAX_LIST_MESSAGES))
+
+    def set_bot_channels(self, bot_id: str, body: Any) -> dict[str, Any]:
+        try:
+            return self.bots.set_channels(bot_id, body)
+        except BotError as exc:
+            raise ApiError(400, "invalid", str(exc))
+
+    # ------------------------------------------------------------------ OpenClaw channel + approvals
+    def openclaw_inbound(self, body: Any) -> tuple[int, dict[str, Any]]:
+        try:
+            return self.channels.inbound(body)
+        except (ChannelError, BotError) as exc:
+            raise ApiError(400, "invalid", str(exc))
+
+    def list_approvals(self, status: Optional[str], bot_id: Optional[str], limit: Any) -> dict[str, Any]:
+        try:
+            return self.channels.list_approvals(status or None, bot_id or None, _limit(limit, MAX_LIST_APPROVALS))
+        except ChannelError as exc:
+            raise ApiError(400, "invalid", str(exc))
+
+    def get_approval(self, approval_id: str) -> dict[str, Any]:
+        return self.channels.get_approval(approval_id)
+
+    def decide_approval(self, approval_id: str, decision: str, body: Any) -> dict[str, Any]:
+        """Owner decision (Prime, loopback). The body must be empty: an approval is never widened by the caller."""
+        if body not in (None, {}):
+            raise ApiError(400, "invalid", "body must be empty")
+        return self.channels.decide(approval_id, decision)
 
     def create_group(self, body: Any) -> dict[str, Any]:
         try:

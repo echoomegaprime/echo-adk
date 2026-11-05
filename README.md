@@ -159,6 +159,14 @@ docs/       CONTRACT.md (frozen contract + implementation notes), SLICES.md (12 
 | `ECHO_ADK_CAPS_FILE` | extra `Capability` records (or `echo.caps.detail` payloads) to extend the default-deny registry | unset |
 | `ECHO_ADK_DAILY_CAP_USD` | service-wide daily spend cap across all runs and bots | `200` |
 | `ECHO_ADK_DEBUG` | `1` for debug-level JSON logs on stderr | off |
+| `ECHO_ADK_OPENCLAW` | `1` turns on the OpenClaw chat channel for echoBots (only where the gateway runs) | off |
+| `ECHO_ADK_OPENCLAW_CLI` / `ECHO_ADK_OPENCLAW_NODE` | `openclaw` entry (`openclaw.mjs`, or the npm shim, resolved to node) and the node binary | `PATH` lookup |
+| `ECHO_ADK_OPENCLAW_URL` | gateway origin for the health probes (loopback only) | `http://127.0.0.1:18789` |
+| `ECHO_ADK_OPENCLAW_LOG_DIR` | gateway log directory for the wedge scan | `<tmp>/openclaw` |
+| `ECHO_ADK_OPENCLAW_NOTIFY` | chat handle for approval notifications, e.g. `telegram:123456789` | the bot's channels, Telegram first |
+| `ECHO_ADK_OPENCLAW_APPROVERS` | channel-qualified sender ids allowed to decide from chat, e.g. `telegram:123456789` | none (chat decisions refused) |
+| `ECHO_ADK_APPROVAL_TTL_S` | seconds before an unanswered approval is denied | `1800` |
+| `ECHO_ADK_OPENCLAW_SKIP_READYZ` | `1` gates on `/healthz` + the log scan only | off |
 
 ## Status
 

@@ -31,6 +31,29 @@ Loopback HTTP service `echo-adk-api` (Python, package `echo_adk.api`, repo `echo
 - Groups (2 to 6 bots in one chat): `POST /groups {name, bots:[bot_id x2..6], prompt}` → `202 {group_id, run_ids:[...]}`; `GET /groups/{id}` → `{group_id, name, bots, status, messages:[{bot_id, text, created_at}], summary?}`.
 - Every bot turn is a normal run (`GET /runs/{run_id}` works) with the bot's own Lease; bot memory is written under `memory.scope` only. Bots never hold tokens, never share a shell, and never share a Lease (deliberate divergence from Grok Bots, which share one cloud computer and credentials).
 
+## echoBots chat channels over OpenClaw + approvals (additive, 2026-11-05)
+
+Commander asked "Should OpenClaw be integrated anywhere?" Decision: **OpenClaw is a transport, not a runtime.** echoBots keep running inside echo-adk (own Lease, own memory scope, daily cap, governed runs); OpenClaw only carries chat messages in and out. Everything below is additive: no existing field, route or status changes meaning, and Prime can ignore all of it.
+
+- `Bot` gains `channels:[Channel]` (always present, `[]` when none). `Channel = {kind:"openclaw", target:"<channel>:<dest>", state:"ready"|"unavailable: <reason>", approvers?:[sender id], allow_from?:[sender id], last_sent_at?, last_error?, dropped?, note?}`. `channel` is one of `telegram, discord, slack, signal, whatsapp, matrix, msteams, googlechat, imessage, mattermost`; `dest` is 1..160 chars from `[A-Za-z0-9@:_.+#!=/-]` (`telegram:123456789`, `telegram:-1001234567890:topic:7`, `discord:channel:222222222222222222`). At most 4 per bot; a target routes to exactly one bot (`409 invalid` otherwise).
+- `POST /bots` accepts `channels?:[{kind, target, approvers?, allow_from?}]`. `PUT /bots/{id}/channels` body `{channels:[...]}` → `200 Bot` (replace; `[]` detaches).
+- `state` is health-gated: `ready` only when the gateway answers `/healthz` and `/readyz` on loopback and its log shows none of the three known wedge modes in the last 15 minutes. Otherwise `unavailable: <reason>` (for example `unavailable: gateway /healthz timed out`, `unavailable: gateway wedged: leaked turn claim on session 0f1e2d3c (2 refused turns in 15 min)`, `unavailable: openclaw adapter off (ECHO_ADK_OPENCLAW is not set on this host)`). An unavailable channel never pauses, fails or delays the bot: the turn runs, the reply is stored in `messages`, and the chat delivery is dropped with `last_error` and `dropped` set. No retry loop.
+- `POST /channels/openclaw/inbound` body `{channel, target:"<dest>", sender, text | callback, message_id?}` (loopback; called by the gateway-side bridge in `deploy/openclaw-hook/`):
+  - a message for a mapped chat → `202 {kind:"message", bot_id, message_id, run_id}` (the `POST /bots/{id}/message` path, in-process; the reply goes back to that chat);
+  - an approval decision (`callback:"echoadk:approve:<approval_id>"`, `text:"callback_data: echoadk:deny:<approval_id>"` or `text:"approve <approval_id>"`) → `200 {kind:"decision", approval:Approval}`;
+  - a repeated `message_id` for the same chat → `200 {kind:"duplicate", message_id}`;
+  - unmapped chat → `404 not_found`; sender outside `allow_from` or not an approver → `403 invalid`; malformed → `400 invalid`.
+- `Approval = {approval_id, kind:"gated"|"error"|"daily_cap"|"group_done", status:"pending"|"approved"|"denied"|"expired"|"notice", actions:["approve","deny"]|[], summary, created_at, notified:{target, state:"queued"|"sent"|"<why not>", at}|null, bot_id?, group_id?, run_id?, needs?, how?, capability?, tier?, lease?:{scopes, max_uses, ttl_s}, expires_at?, decided_at?, decided_by?:"api"|"openclaw:<channel>:<sender>"|"default-deny", result_run_id?, reason?}`.
+  - `GET /approvals?status=&bot_id=&limit=` → `{approvals:[Approval]}` (newest first, limit <= 200); `GET /approvals/{id}` → `Approval`.
+  - `POST /approvals/{id}/approve` / `POST /approvals/{id}/deny` (empty body; owner-only on Prime) → `200 Approval`; not pending → `409 invalid`; unknown → `404 not_found`; a non-empty body → `400 invalid` (an approval cannot be widened by the caller).
+- What raises one notification (sent to `ECHO_ADK_OPENCLAW_NOTIFY` when set, else the bot's channels, Telegram first):
+  - **gated** turn: `needs`/`how` from the gated envelope. Approve mints a Lease for **one** re-run of that turn: `lease scope X` adds X (only when X is in the agent allowlist and tier <= 1), `lease`/`lease renewal` mints the template again, `lease with more max_uses` doubles `max_uses` (cap 120). A tier >= 2 gate is a `notice`: chat approval cannot mint a signed ESH/SOL grant. One open approval per bot and need (a scheduled bot does not flood the chat).
+  - **error** (failed turn): Approve resumes the bot and retries that turn once with the template Lease.
+  - **daily_cap** hit: `notice` only; the cap is never raised from chat.
+  - **group_done**: `notice` with the group summary.
+- Approval rules: default deny (no decision before `expires_at`, default 30 min, is `expired`), single use, no always-allow, the bot's Lease template is never changed, the re-run goes through the normal daily-cap check. Chat decisions are accepted only from the chat the notification went to and only from an approver (`ECHO_ADK_OPENCLAW_APPROVERS` = `telegram:<id>,...`, plus the channel's `approvers`); with no approvers every chat decision is refused. Buttons carry `echoadk:<approve|deny>:<approval_id>` (48 bytes; Telegram allows 64) and the text carries the same reference; no token or key is ever in a message.
+- Transport: replies go out through `openclaw message send --channel=<c> --target=<dest> --message=<text> --json [--presentation=<buttons>]`, executed directly (never through a shell; a Windows `openclaw.cmd` shim is resolved to `node openclaw.mjs`). The OpenClaw CLI resolves its own credentials; echo-adk never reads or forwards an OpenClaw token. Health is never probed through the CLI.
+
 ## Non-negotiables on both sides
 
 - Prime never forwards tokens or credentials to the service; the service is reached only on loopback and takes its own broker token from its systemd environment.
@@ -70,3 +93,8 @@ Choices the contract leaves open, as implemented in `echo_adk.api` and asserted 
 | `inbox_depth` | pending user messages whose run has not started |
 | Message roles | `user` (inbox), `bot` (final text of the turn), `system` (refusals and failed turns) |
 | Service identity | `GET /health` reports `profile: "ECHO_ADK"`, `service: "echo-adk-api"`, semver `version` |
+| `channels` on `Bot` | always present (`[]` when none); `state` is evaluated at read time from a 30 s health cache |
+| OpenClaw adapter off (FORGE default) | `ECHO_ADK_OPENCLAW` unset → every channel reads `unavailable: openclaw adapter off (...)`; bots are unaffected |
+| Bad OpenClaw env | the service still starts; channels read `unavailable: openclaw adapter off: invalid configuration: <why>` |
+| Inbound auth | the route is loopback-only like every other route; chat decisions additionally need approver + notified chat |
+| Reply routing | a turn that came from a chat answers that chat; scheduled turns answer every channel; failures, refusals and gates go out as one approval notification, not as a reply |

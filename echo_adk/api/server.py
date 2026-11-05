@@ -50,6 +50,12 @@ ROUTES: list[Route] = [
     ("GET", re.compile(rf"^/bots/{ID}/messages$"), "bot_messages"),
     ("POST", re.compile(r"^/groups$"), "create_group"),
     ("GET", re.compile(rf"^/groups/{ID}$"), "get_group"),
+    ("PUT", re.compile(rf"^/bots/{ID}/channels$"), "set_bot_channels"),
+    ("POST", re.compile(r"^/channels/openclaw/inbound$"), "openclaw_inbound"),
+    ("GET", re.compile(r"^/approvals$"), "list_approvals"),
+    ("GET", re.compile(rf"^/approvals/{ID}$"), "get_approval"),
+    ("POST", re.compile(rf"^/approvals/{ID}/approve$"), "approve"),
+    ("POST", re.compile(rf"^/approvals/{ID}/deny$"), "deny"),
 ]
 
 
@@ -194,6 +200,16 @@ class Handler(BaseHTTPRequestHandler):
             return 202, service.create_group(body)
         if name == "get_group":
             return 200, service.bots.get_group(params["id"])
+        if name == "set_bot_channels":
+            return 200, service.set_bot_channels(params["id"], body)
+        if name == "openclaw_inbound":
+            return service.openclaw_inbound(body)
+        if name == "list_approvals":
+            return 200, service.list_approvals(self._one(query, "status"), self._one(query, "bot_id"), self._one(query, "limit"))
+        if name == "get_approval":
+            return 200, service.get_approval(params["id"])
+        if name in ("approve", "deny"):
+            return 200, service.decide_approval(params["id"], name, body)
         raise ApiError(404, "not_found", "no such route")
 
 

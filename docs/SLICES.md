@@ -42,6 +42,11 @@ Legend: `[x]` delivered in this branch, `[~]` partially delivered (what is missi
 - [ ] **11. Eval harness** - not built (`.evalset.json`, `tool_trajectory_avg_score`).
 - [ ] **12. TS parity ADR** - not written.
 
+- [~] **13. echoBots OpenClaw channel + approvals** (branch `agent/echobots-openclaw-20261105`) - adapter, inbound
+  route, health gate, approvals with Approve/Deny, bridge hook, 34 tests. *Missing:* the bridge is not installed on
+  the QUENCH gateway; QUENCH OpenClaw has only Discord configured (no Telegram account); the FORGE unit runs with the
+  adapter off because the gateway and its CLI live on QUENCH; no live send was made.
+
 ## Decisions taken in this branch (open questions E.*)
 
 - **E.3 broker scope:** the kit mints exact-cap-id Leases per run/bot by default (R3 by construction); `*` is refused

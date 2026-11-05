@@ -53,6 +53,14 @@ CREATE TABLE IF NOT EXISTS counters (
     name TEXT PRIMARY KEY,
     value INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS approvals (
+    approval_id TEXT PRIMARY KEY,
+    created_seq INTEGER NOT NULL,
+    bot_id TEXT,
+    group_id TEXT,
+    doc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS approvals_bot ON approvals(bot_id, created_seq DESC);
 """
 
 
@@ -164,6 +172,7 @@ class Store:
             cur = self._db.execute("DELETE FROM bots WHERE bot_id=?", (bot_id,))
             self._db.execute("DELETE FROM messages WHERE bot_id=?", (bot_id,))
             self._db.execute("DELETE FROM spend WHERE scope=?", (f"bot:{bot_id}",))
+            self._db.execute("DELETE FROM approvals WHERE bot_id=?", (bot_id,))
             self.compact()
             return cur.rowcount > 0
 
@@ -222,6 +231,32 @@ class Store:
         with self._lock:
             row = self._db.execute("SELECT doc FROM groups WHERE group_id=?", (group_id,)).fetchone()
         return json.loads(row[0]) if row else None
+
+    # ----------------------------------------------------------------- approvals (OpenClaw notifications)
+    def put_approval(self, doc: dict[str, Any]) -> None:
+        with self._lock:
+            existing = self._db.execute("SELECT created_seq FROM approvals WHERE approval_id=?", (doc["approval_id"],)).fetchone()
+            seq = existing[0] if existing else self._next_seq()
+            self._db.execute(
+                "INSERT OR REPLACE INTO approvals(approval_id, created_seq, bot_id, group_id, doc) VALUES (?,?,?,?,?)",
+                (doc["approval_id"], seq, doc.get("bot_id"), doc.get("group_id"), self._dump(doc)),
+            )
+
+    def get_approval(self, approval_id: str) -> Optional[dict[str, Any]]:
+        with self._lock:
+            row = self._db.execute("SELECT doc FROM approvals WHERE approval_id=?", (approval_id,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def list_approvals(self, *, bot_id: Optional[str] = None, limit: int = 200) -> list[dict[str, Any]]:
+        """Newest first."""
+        with self._lock:
+            if bot_id:
+                rows = self._db.execute(
+                    "SELECT doc FROM approvals WHERE bot_id=? ORDER BY created_seq DESC LIMIT ?", (bot_id, int(limit))
+                ).fetchall()
+            else:
+                rows = self._db.execute("SELECT doc FROM approvals ORDER BY created_seq DESC LIMIT ?", (int(limit),)).fetchall()
+        return [json.loads(r[0]) for r in rows]
 
     # ----------------------------------------------------------------- spend
     def add_spend(self, scope: str, usd: float, day: Optional[str] = None) -> float:

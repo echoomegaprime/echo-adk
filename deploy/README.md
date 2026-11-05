@@ -49,6 +49,26 @@ journalctl -u echo-adk-api -n 50 --no-pager                            # JSON li
 ss -tlnp 'sport = :8378'                                               # 127.0.0.1 only
 ```
 
+## OpenClaw chat channel (gateway host only)
+
+echoBots can talk through OpenClaw (`echo_adk.channels.openclaw`). OpenClaw is a transport: the adapter needs the
+`openclaw` CLI and the gateway on loopback, so it only works in an echo-adk process on the gateway host. On FORGE
+(this unit) leave `ECHO_ADK_OPENCLAW` unset; bot channels then read `unavailable: openclaw adapter off (...)` and the
+bots run normally.
+
+On the gateway host:
+
+```bash
+ECHO_ADK_OPENCLAW=1
+ECHO_ADK_OPENCLAW_CLI=<npm prefix>/node_modules/openclaw/openclaw.mjs   # or the npm shim; .cmd is resolved to node
+ECHO_ADK_OPENCLAW_NOTIFY=telegram:<commander chat id>                   # needs a Telegram account in openclaw.json
+ECHO_ADK_OPENCLAW_APPROVERS=telegram:<commander user id>
+```
+
+Then install `deploy/openclaw-hook/echo-adk-bridge` as an OpenClaw hook (see its `HOOK.md`) with
+`ECHO_ADK_BRIDGE_TARGETS` listing the mapped chats. Check one round trip with a throwaway chat before mapping a real
+one: `GET /bots/{id}` should show `channels[0].state = "ready"`.
+
 ## Operate
 
 | Need | Command |

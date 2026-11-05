@@ -2,6 +2,20 @@
 
 All notable changes to echo-adk. The format follows Keep a Changelog; versions follow SemVer.
 
+## [Unreleased]
+
+### Added
+- `echo_adk.channels.openclaw`: echoBots chat channels over OpenClaw (transport, not runtime). Bot
+  `channels:[{kind:"openclaw", target}]`, `PUT /bots/{id}/channels`, `POST /channels/openclaw/inbound`
+  (in-process bot turn; reply to the originating chat), health gate (loopback `/healthz` + `/readyz` and a
+  read-only scan of the gateway log for the three wedge modes) exposed as `channels[].state`.
+- Approval notifications for gated turns, bot errors, daily-cap hits and finished group chats, Telegram
+  first, with Approve/Deny callbacks; `GET /approvals`, `GET /approvals/{id}`, `POST /approvals/{id}/approve|deny`.
+  Default deny (TTL), single use, one-run Lease, no always-allow, no tier >= 2 grant from chat, no token in a message.
+- `CliTransport` (`openclaw message send`, no shell, `.cmd` shim resolved to `node openclaw.mjs`).
+- `deploy/openclaw-hook/echo-adk-bridge`: OpenClaw internal hook that forwards mapped chats to the inbound route.
+- 34 tests with a stand-in gateway, a fake gateway HTTP server, a fake `openclaw` CLI and log fixtures.
+
 ## [0.1.0] - 2026-11-04
 
 First bootstrap of the Echo Agent Development Kit (Commander order 2026-11-04).

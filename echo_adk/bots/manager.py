@@ -11,6 +11,9 @@ CLI credentials are shared across bots and survive bot deletion): echoBots share
 * bots are created ``paused``; the owner resumes; ``schedule.every_s >= 60``
 * per-bot ``daily_cost_cap_usd <= 5`` is enforced before every turn (``budget_exceeded`` refusal) on top
   of the per-run budget and the service-wide daily cap
+* optional chat ``channels`` (``echo_adk.channels.openclaw``): OpenClaw carries messages in and out; the
+  bot keeps running when the gateway is down, and gated turns, errors, cap hits and finished groups
+  push one approval notification
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ import time
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Optional
 
+from ..channels.openclaw import validate_channels
 from ..core.log import get_logger
 from ..core.types import (
     BUDGET_CAPS,
@@ -145,6 +149,7 @@ class BotManager:
             "daily_cost_cap_usd": bot["daily_cost_cap_usd"],
             "spent_today_usd": round(today, 4),
             "inbox_depth": self.store.count_messages(bot["bot_id"], pending_only=True),
+            "channels": self.service.channels.describe(bot),
             "created_at": bot["created_at"],
         }
         if bot.get("instruction"):
@@ -167,7 +172,8 @@ class BotManager:
     def create_bot(self, body: Any) -> dict[str, Any]:
         if not isinstance(body, Mapping):
             raise BotError("body must be an object")
-        extra = set(body) - {"name", "agent", "mode", "schedule", "instruction", "plugins", "lease", "daily_cost_cap_usd"}
+        allowed = {"name", "agent", "mode", "schedule", "instruction", "plugins", "lease", "daily_cost_cap_usd", "channels"}
+        extra = set(body) - allowed
         if extra:
             raise BotError(f"unknown field(s) {sorted(extra)}")
         name = _text(body.get("name"), "name", 64)
@@ -192,6 +198,8 @@ class BotManager:
         cap = body.get("daily_cost_cap_usd", DEFAULT_DAILY_CAP_USD)
         if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not 0 <= cap <= MAX_DAILY_CAP_USD:
             raise BotError("daily_cost_cap_usd must be between 0 and 5")
+        channels = validate_channels(body.get("channels"))
+        self.service.channels.check_unique(channels, None)
         bot = {
             "bot_id": new_id(),
             "name": name,
@@ -203,6 +211,7 @@ class BotManager:
             "plugins": list(dict.fromkeys(plugins)),
             "lease": bot_lease_template(agent, body.get("lease")),
             "daily_cost_cap_usd": round(float(cap), 2),
+            "channels": channels,
             "created_at": now_iso(),
             "last_run_at": None,
             "last_error": None,
@@ -216,6 +225,19 @@ class BotManager:
 
     def get_bot(self, bot_id: str) -> dict[str, Any]:
         return self._public(self._require(bot_id))
+
+    def set_channels(self, bot_id: str, body: Any) -> dict[str, Any]:
+        """``PUT /bots/{id}/channels`` body ``{channels:[...]}`` replaces the bot's chat handles."""
+        with self._lock:
+            bot = self._require(bot_id)
+            if not isinstance(body, Mapping) or set(body) != {"channels"}:
+                raise BotError("body must be {channels}")
+            channels = validate_channels(body["channels"])
+            self.service.channels.check_unique(channels, bot_id)
+            bot["channels"] = channels
+            self.store.put_bot(bot)
+        log.info("bot_channels_set", bot_id=bot_id, channels=len(channels))
+        return self._public(bot)
 
     def resume(self, bot_id: str) -> dict[str, Any]:
         with self._lock:
@@ -249,7 +271,8 @@ class BotManager:
         return {"bot_id": bot_id, "deleted": True}
 
     # ------------------------------------------------------------------ inbox
-    def message(self, bot_id: str, body: Any) -> dict[str, Any]:
+    def message(self, bot_id: str, body: Any, *, origin: Optional[str] = None) -> dict[str, Any]:
+        """Queue one turn. ``origin`` (in-process only) is the chat handle an OpenClaw message came from."""
         bot = self._require(bot_id)
         if not isinstance(body, Mapping) or set(body) != {"text"}:
             raise BotError("body must be {text}")
@@ -265,6 +288,7 @@ class BotManager:
                 "created_at": now_iso(),
                 "run_id": run_id,
                 "state": "pending",
+                "origin": origin,
             }
         )
         return {"message_id": message_id, "run_id": run_id}
@@ -338,10 +362,12 @@ class BotManager:
         self.store.put_bot(bot)
         self.service.submit_run(run_id)
 
-    def _deliver(self, bot: Mapping[str, Any], run_id: str, text: str, *, state: str) -> None:
+    def _deliver(self, bot: Mapping[str, Any], run_id: str, text: str, *, state: str, outbound: bool = True) -> None:
+        origin = None
         for msg in self.store.list_messages(bot["bot_id"], limit=100000):
             if msg.get("run_id") == run_id and msg["role"] == "user":
                 msg["state"] = state
+                origin = msg.get("origin") or origin
                 self.store.put_message(msg)
         self.store.put_message(
             {
@@ -354,6 +380,8 @@ class BotManager:
                 "state": "done",
             }
         )
+        if state == "done" and outbound:  # failures, refusals and gates reach the chat as one approval notification
+            self.service.channels.on_reply(bot, text, origin)
 
     def on_run_finished(self, run: Mapping[str, Any]) -> None:
         """Called by the service when a bot turn (not a group turn) finishes."""
@@ -384,9 +412,20 @@ class BotManager:
                     error = run.get("error") or {}
                     status = run.get("status")
                     text = f"[{status}] {error.get('message') or 'no final answer'}"
-                    self._deliver(bot, run["run_id"], text, state="done" if status == "done" else "failed")
+                    self._deliver(bot, run["run_id"], text, state="done" if status == "done" else "failed", outbound=False)
                 else:
                     self._deliver(bot, run["run_id"], text, state="done")
+                self._notify(bot, run)
+
+    def _notify(self, bot: Mapping[str, Any], run: Mapping[str, Any]) -> None:
+        """Gated turns and failures (including daily-cap refusals) become one approval notification."""
+        try:
+            if run.get("status") == "gated":
+                self.service.channels.on_gated(bot, run)
+            elif run.get("status") == "failed":
+                self.service.channels.on_failed(bot, run)
+        except Exception:  # a notification problem never breaks the bot
+            log.error("bot_notify_failed", bot_id=bot.get("bot_id"), run_id=run.get("run_id"), exc_info=True)
 
     # ------------------------------------------------------------------ groups
     def create_group(self, body: Any) -> dict[str, Any]:
@@ -487,6 +526,10 @@ class BotManager:
         group["summary"] = self._summary(group)
         self.store.put_group(group)
         log.info("group_finished", group_id=group_id, status=group["status"], turns=len(group["messages"]))
+        try:
+            self.service.channels.on_group_finished(group)
+        except Exception:  # a notification problem never breaks the group
+            log.error("group_notify_failed", group_id=group_id, exc_info=True)
 
     def _summary(self, group: Mapping[str, Any]) -> str:
         names = {b["bot_id"]: b["name"] for b in self.store.list_bots()}

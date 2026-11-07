@@ -15,8 +15,13 @@ python -m pip install 'echo-adk[sdk-host]'
 
 For a reviewed source checkout, use `python -m pip install -e '.[sdk-host]'`.
 The optional extra pins FastAPI 0.162.2, httpx 0.28.1 and Uvicorn 0.54.0. The core
-package still has no runtime dependencies. CI installs `.[dev,sdk-host]` and runs
+package still has no runtime dependencies. CI installs `.[dev,sdk-host,calendar]` and runs
 the ASGI tests as required tests. They do not silently skip missing dependencies.
+
+The native worker's calendar schedules also need IANA timezone data. Install
+`echo-adk[calendar]` in the worker environment on Windows or images without a
+system timezone database. The optional extra supplies `tzdata==2026.6`; it is
+separate from the SDK host when host and worker use different environments.
 
 Preserve the existing SDK service's working directory and startup options, and
 use the application factory target:

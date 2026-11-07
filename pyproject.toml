@@ -31,6 +31,8 @@ adk = ["google-adk>=2.13,<3"]
 dev = ["pytest>=8", "ruff>=0.17,<0.18"]
 # Optional integration inside an existing ECHO SDK host. Core imports stay stdlib.
 sdk-host = ["fastapi==0.162.2", "httpx==0.28.1", "uvicorn==0.54.0"]
+# IANA data for calendar workers on Windows or images without system tzdata.
+calendar = ["tzdata==2026.6"]
 
 [project.urls]
 Homepage = "https://github.com/echoomegaprime/echo-adk"

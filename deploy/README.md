@@ -6,6 +6,11 @@ OpenAI-compatible model endpoint (FORGE Qwen on `127.0.0.1:11441`) for the `qwen
 
 ## Install
 
+Calendar workers require an IANA timezone database. FORGE can use its system timezone data. For
+Windows workers or minimal images without that database, install `echo-adk[calendar]` (or
+`python -m pip install -e ".[calendar]"` from the reviewed checkout) in the worker's Python environment.
+This supplies the pinned first-party `tzdata` fallback; it does not change the machine timezone.
+
 ```bash
 # as forge
 cd /home/forge

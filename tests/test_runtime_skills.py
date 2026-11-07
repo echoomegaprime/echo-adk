@@ -2,6 +2,8 @@
 
 import hashlib
 import json
+import os
+import subprocess
 
 import pytest
 
@@ -29,9 +31,24 @@ def test_installed_guidance_is_bounded_redacted_and_covered_by_the_run_receipt(t
     assert "Use traceable sources" in model.seen[0][1][0]["content"]
     assert result.steps[0].data["skill_context"] == receipt
     assert broker.calls == []  # guidance did not grant or start a capability
-    (tmp_path / "escape-skill").symlink_to(tmp_path.parent, target_is_directory=True)
-    with pytest.raises(SkillValidationError, match="leaves"):
-        library.context(["escape-skill"])
+    escape = tmp_path / "escape-skill"
+    if os.name == "nt":
+        # Directory junctions exercise real path resolution on Windows without
+        # requiring Developer Mode or the symbolic-link creation privilege.
+        subprocess.run(
+            ["cmd.exe", "/d", "/c", "mklink", "/J", str(escape), str(tmp_path.parent)],
+            check=True,
+            capture_output=True,
+            timeout=10,
+        )
+    else:
+        escape.symlink_to(tmp_path.parent, target_is_directory=True)
+    try:
+        assert escape.resolve() == tmp_path.parent.resolve()
+        with pytest.raises(SkillValidationError, match="leaves"):
+            library.context(["escape-skill"])
+    finally:
+        escape.rmdir() if os.name == "nt" else escape.unlink()
     install(tmp_path, "large-skill", "x" * 64001)
     with pytest.raises(SkillValidationError, match="context bound"):
         library.context(["large-skill"])

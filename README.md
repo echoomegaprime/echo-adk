@@ -18,9 +18,15 @@ memory, and artifact-service integration remain separate delivery gates in `docs
 ```bash
 git clone https://github.com/echoomegaprime/echo-adk
 cd echo-adk
-python -m pip install -e ".[dev]"      # core + pytest/ruff; add "adk" to the extras for Google ADK
+python -m pip install -e ".[dev,sdk-host,calendar]" # complete offline test dependencies; Google ADK is separate
 python -m pytest -q                    # offline fixtures, no external provider credentials
 ```
+
+Calendar schedules need an IANA timezone database. On Windows and minimal images without system
+timezone data, install the worker with `python -m pip install -e ".[calendar]"`. This optional extra
+provides the first-party `tzdata` package; the core package still has no runtime dependencies. Unknown
+zones or missing data produce an explicit error rather than silently scheduling in another timezone.
+See [Python's timezone data requirements](https://docs.python.org/3/library/zoneinfo.html#data-sources).
 
 ## Five-minute quickstart
 

@@ -51,6 +51,7 @@ ROUTES: list[Route] = [
     ("POST", re.compile(r"^/groups$"), "create_group"),
     ("GET", re.compile(rf"^/groups/{ID}$"), "get_group"),
 ]
+V2_ROUTES: list[Route] = [("POST", re.compile(rf"^/bots/{ID}/events$"), "bot_event")]
 
 
 def is_loopback_host(host: str) -> bool:
@@ -93,6 +94,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -104,6 +107,8 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "invalid", "bad Content-Length")
         if length < 0 or length > MAX_BODY_BYTES:
             raise ApiError(413, "invalid", "body larger than 1 MiB")
+        if length and self.headers.get_content_type() != "application/json":
+            raise ApiError(415, "invalid", "Content-Type must be application/json")
         raw = self.rfile.read(length) if length else b""
         if not raw.strip():
             return {}
@@ -116,10 +121,35 @@ class Handler(BaseHTTPRequestHandler):
         service: AdkService = type(self.server).service  # type: ignore[attr-defined]
         parsed = urllib.parse.urlsplit(self.path)
         path = parsed.path.rstrip("/") or "/"
+        contract_version = 2 if path.startswith("/v2/") else 1
+        if contract_version == 2:
+            path = path[3:]
         query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
         matched_path = False
         try:
-            for verb, pattern, name in ROUTES:
+            # A loopback bind alone permits DNS rebinding and cross-origin HTML
+            # form writes. Prime is a native server-to-server client and never
+            # forwards browser Origin or Fetch Metadata to this worker.
+            hosts = self.headers.get_all("Host", [])
+            try:
+                host = urllib.parse.urlsplit("http://" + (hosts[0] if len(hosts) == 1 else ""))
+                trusted_host = (
+                    len(hosts) == 1
+                    and len(hosts[0]) <= 300
+                    and host.hostname is not None
+                    and is_loopback_host(host.hostname)
+                    and not host.username
+                    and not host.password
+                    and not host.path
+                    and not host.query
+                    and not host.fragment
+                )
+                _ = host.port  # reject malformed ports as well
+            except ValueError:
+                trusted_host = False
+            if not trusted_host or self.headers.get("Origin") is not None or self.headers.get("Sec-Fetch-Site") not in (None, "none"):
+                raise ApiError(403, "denied", "Only native loopback clients may access this service")
+            for verb, pattern, name in ROUTES + (V2_ROUTES if contract_version == 2 else []):
                 match = pattern.match(path)
                 if not match:
                     continue
@@ -127,13 +157,14 @@ class Handler(BaseHTTPRequestHandler):
                 if verb != method:
                     continue
                 body = self._read_json() if method in ("POST", "PUT", "DELETE") else None
-                status, payload = self._handle(service, name, match.groupdict(), query, body)
+                status, payload = self._handle(service, name, match.groupdict(), query, body, contract_version=contract_version)
                 self._send(status, payload)
                 return
             if matched_path:
                 raise ApiError(405, "invalid", "method not allowed")
             raise ApiError(404, "not_found", "no such route")
         except ApiError as exc:
+            self.close_connection = True  # an admission failure can leave an unread request body
             self._send(exc.status, {**exc.to_dict(), "message": redact(exc.message)[0]})
         except ValidationError as exc:
             self._send(400, {"error": "invalid", "message": redact(str(exc))[0]})
@@ -153,8 +184,29 @@ class Handler(BaseHTTPRequestHandler):
         params: dict[str, str],
         query: dict[str, list[str]],
         body: Any,
+        *,
+        contract_version: int = 1,
     ) -> tuple[int, Any]:
+        def bot_response(bot: dict[str, Any]) -> dict[str, Any]:
+            if contract_version == 2:
+                return {**bot, "budget": service.budget_health(bot["bot_id"])}
+            schedule = bot.get("schedule")
+            if isinstance(schedule, dict) and set(schedule) - {"every_s"}:
+                raise ApiError(409, "invalid", "This bot schedule requires the v2 API; upgrade this client")
+            return {key: value for key, value in bot.items() if key not in ("next_run_at", "last_scheduled_at")}
+
         if name == "health":
+            if contract_version == 2:
+                return 200, {
+                    **service.health(),
+                    "contract_version": 2,
+                    "features": {"calendar_schedules": True, "idempotent_events": True, "memory_recall": True},
+                    "budgets": service.budget_health(),
+                    "connections": {
+                        "memory": {"provider": "local", "recall": True, "durable": True, "shared": False},
+                        "browser": {"available": False, "reason": "No isolated browser provider is configured"},
+                    },
+                }
             return 200, service.health()
         if name == "agents":
             return 200, service.list_agents()
@@ -171,25 +223,41 @@ class Handler(BaseHTTPRequestHandler):
         if name == "list_runs":
             return 200, service.list_runs(self._one(query, "agent"), self._one(query, "limit"))
         if name == "get_run":
-            return 200, service.get_run(params["id"])
+            run = service.get_run(params["id"])
+            if contract_version == 2:
+                run["budget_accounting"] = service.run_budget(params["id"])
+            return 200, run
         if name == "stop_run":
             return 200, service.stop_run(params["id"])
         if name == "list_bots":
-            return 200, service.bots.list_bots()
+            return 200, {"bots": [bot_response(bot) for bot in service.bots.list_bots()["bots"]]}
         if name == "create_bot":
-            return 201, service.create_bot(body)
+            if contract_version == 1 and isinstance(body, dict) and isinstance(body.get("schedule"), dict):
+                if set(body["schedule"]) - {"every_s"}:
+                    raise ApiError(400, "invalid", "Calendar schedules and missed-run policies require POST /v2/bots")
+            return 201, bot_response(service.create_bot(body))
         if name == "get_bot":
-            return 200, service.bots.get_bot(params["id"])
+            return 200, bot_response(service.bots.get_bot(params["id"]))
         if name == "resume_bot":
-            return 200, service.bots.resume(params["id"])
+            bot_response(service.bots.get_bot(params["id"]))  # check version before mutation
+            return 200, bot_response(service.bots.resume(params["id"]))
         if name == "pause_bot":
-            return 200, service.bots.pause(params["id"])
+            bot_response(service.bots.get_bot(params["id"]))
+            return 200, bot_response(service.bots.pause(params["id"]))
         if name == "delete_bot":
             return 200, service.bots.delete(params["id"])
         if name == "message_bot":
             return 202, service.message_bot(params["id"], body)
+        if name == "bot_event":
+            return 202, service.bots.deliver_event(params["id"], body)
         if name == "bot_messages":
-            return 200, service.bot_messages(params["id"], self._one(query, "since"), self._one(query, "limit"))
+            messages = service.bot_messages(params["id"], self._one(query, "since"), self._one(query, "limit"))
+            if contract_version == 1:
+                messages = {
+                    **messages,
+                    "messages": [{key: value for key, value in item.items() if key != "event"} for item in messages["messages"]],
+                }
+            return 200, messages
         if name == "create_group":
             return 202, service.create_group(body)
         if name == "get_group":

@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from echo_adk.api.service import AdkService
+from echo_adk.api.service import AdkService, ApiError
 from echo_adk.api.store import Store
 from echo_adk.bots.manager import BotError, bot_lease_template
 from tests.conftest import wait_for
@@ -76,14 +76,15 @@ def test_daily_cost_cap_refuses_turn_with_budget_exceeded(svc):
     assert run["status"] == "done" and run["spent"]["cost_usd"] == pytest.approx(0.4)
     wait_for(lambda: svc.bots.get_bot(bot["bot_id"])["status"] == "idle")
     assert svc.bots.get_bot(bot["bot_id"])["spent_today_usd"] == pytest.approx(0.4)
-    second = svc.message_bot(bot["bot_id"], {"text": "turn two"})["run_id"]
-    svc.bots.tick()
-    refused = svc.get_run(second)
-    assert refused["status"] == "failed" and refused["error"]["code"] == "budget_exceeded"
-    state = svc.bots.get_bot(bot["bot_id"])
-    assert state["status"] == "error" and "daily_cost_cap_usd" in state["last_error"]
-    roles = [m["role"] for m in svc.bot_messages(bot["bot_id"], None, 50)["messages"]]
-    assert roles[-1] == "system" and "[refused]" in svc.bot_messages(bot["bot_id"], None, 50)["messages"][-1]["text"]
+    before_runs = svc.store.count_runs()
+    before_messages = svc.store.count_messages(bot["bot_id"])
+    with pytest.raises(ApiError) as refused:
+        svc.message_bot(bot["bot_id"], {"text": "turn two"})
+    assert refused.value.status == 429 and refused.value.code == "budget_exceeded"
+    assert refused.value.extra["scope"] == "bot"
+    assert svc.store.count_runs() == before_runs
+    assert svc.store.count_messages(bot["bot_id"]) == before_messages
+    assert svc.bots.get_bot(bot["bot_id"])["spent_today_usd"] == pytest.approx(0.4)
 
 
 def test_daily_spend_rolls_over_by_utc_day(tmp_path):

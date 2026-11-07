@@ -3,9 +3,10 @@
 **Echo Agent Development Kit**: an Echo-native agent core (Role, Skill, Capability, Lane, Lease, Proof)
 with Google ADK, MCP and A2A adapters.
 
-One small, zero-dependency way to *define* an Echo agent and to *run* it under Echo's existing governance
-(ESH tiers and grants, the SOL broker, CertForge/Harbormaster proof, ECF/Crystal memory), so the same agent
-file is loadable by the core runner, by Google ADK (`adk web/run`), by any MCP client and by Agent2Agent peers.
+One small, zero-dependency way to *define* an Echo agent and run it with exact-scope leases, capability
+policy, local execution proofs, and scoped local memory. The same definition can be loaded by the core
+runner and its Google ADK, MCP, and Agent2Agent adapters. Live broker/model certification, Crystal/ECF
+memory, and artifact-service integration remain separate delivery gates in `docs/SLICES.md`.
 
 - Core: Python >= 3.10, **standard library only**. FORGE runs 3.12.3.
 - Optional extra `echo-adk[adk]` brings `google-adk` (needs Python >= 3.11) for the ADK adapter.
@@ -18,7 +19,7 @@ file is loadable by the core runner, by Google ADK (`adk web/run`), by any MCP c
 git clone https://github.com/echoomegaprime/echo-adk
 cd echo-adk
 python -m pip install -e ".[dev]"      # core + pytest/ruff; add "adk" to the extras for Google ADK
-python -m pytest -q                    # all green, no network, no credentials
+python -m pytest -q                    # offline fixtures, no external provider credentials
 ```
 
 ## Five-minute quickstart
@@ -41,9 +42,9 @@ export ECHO_ADK_GATE_KEY=...                          # the ONLY place a credent
 echo-adk run agents/knowledge-scout.json "what does the Forge hold on ESH grants?"
 # -> prints the Proof {run_id, lease_id, events_sha256, actions[], verdict}; exit 0 PASS / 1 FAIL / 2 UNKNOWN
 
-# 4. serve the frozen HTTP contract Echo Prime consumes (loopback only)
+# 4. serve v1 and the additive v2 HTTP API (native loopback clients only)
 echo-adk serve --port 8378 --state-dir ~/.echo/echo-adk --agents-dir agents
-curl -s http://127.0.0.1:8378/health
+curl -s http://127.0.0.1:8378/v2/health
 curl -s -X POST http://127.0.0.1:8378/runs -H 'Content-Type: application/json' \
      -d '{"agent":"forge-steward","prompt":"How is node forge?"}'
 
@@ -112,22 +113,37 @@ A provider that is missing, signed out, timed out or unreadable raises `Provider
 message "...; no fallback was used". Nothing is retried on another provider. Models config refuses any
 `api_key`-shaped field and any non-loopback endpoint.
 
-## The contract (`docs/CONTRACT.md`)
+## HTTP contracts and echoBots
 
-`echo-adk serve` implements the frozen `echo-adk-api <-> Echo Prime` contract exactly: `GET /health`
+The existing v1 wire shapes are documented in [`docs/CONTRACT.md`](docs/CONTRACT.md): `GET /health`
 (`profile:"ECHO_ADK"`), `GET /agents[/{name}]`, `POST /agents` (201, saved as `<agents-dir>/<name>.json` with
 `origin:{by:"echo"|"owner", prompt_sha256?, created_at}`), `PUT|DELETE /agents/{name}`, `POST /runs` (202), `GET /runs[/{id}]`, `POST /runs/{id}/stop`,
 `GET|POST /bots`, `GET|DELETE /bots/{id}`, `POST /bots/{id}/{resume|pause|message}`, `GET /bots/{id}/messages`,
-`POST /groups` (202), `GET /groups/{id}`. All ids are 32 lowercase hex, every response is
-`application/json`, errors are `{error, message}` with codes `not_found | invalid | gated | budget_exceeded |
-unavailable`. Budgets are clamped to the agent lane and the service caps (120 calls, 5 USD, 4800 s).
-`tests/test_contract.py` asserts every route, shape and status code; Prime's stand-in mirrors it.
+`POST /groups` (202), `GET /groups/{id}`. IDs are 32 lowercase hex, JSON errors retain `{error, message}`,
+and run budgets are clamped to the agent lane and service limits (120 calls, 5 USD, 4800 s).
 
-**echoBots** are always-on governed agents: created `paused`, one Lease per turn from the bot's own template
-(exact cap ids), one memory scope `bot:<id>`, `schedule.every_s >= 60`, an inbox (one run per message),
-`daily_cost_cap_usd <= 5` enforced before every turn, groups of 2..6 bots taking round-robin turns over a shared
-transcript. Deliberate divergence from Grok Bots: no shared computer, no shared shell, no shared lease, no tokens;
-`DELETE` leaves nothing behind.
+[`docs/CONTRACT_V2.md`](docs/CONTRACT_V2.md) documents the same routes under `/v2`, calendar schedules,
+`POST /v2/bots/{id}/events`, budget accounting, and truthful local connection status. V1 clients receive
+an explicit 409 upgrade response when a bot's schedule has any key beyond `every_s`, including calendar
+schedules or an explicit `missed` policy. V1 messages omit event metadata; v2 messages retain it. Both
+versions require a valid loopback Host, reject browser Origin headers, and require JSON for nonempty
+mutation bodies.
+
+**echoBots** start paused. Each turn gets a fresh lease at dispatch from its admitted immutable template
+and uses the exact memory scope `bot:<id>`. Interval and local-calendar schedules have explicit missed-run
+and DST behavior. Inbox events have bounded durable idempotency; groups of 2–6 bots reserve their members
+and execute sequential turns without overlapping those bots' normal inbox/schedule work.
+
+Every service run atomically reserves against the service allowance and applicable bot allowance before
+work. Rejection is immediate with 429 `budget_exceeded`; completion releases unused capacity. Outstanding
+holds survive midnight, and uncertain interrupted costs are reported separately. Bot deletion removes
+its local state but retains aggregate service charges and previously shared group transcript records.
+
+Local memory recall is bounded, redacted, and treated as untrusted history. Successful final envelopes
+include a durable local memory receipt. This is not a Crystal/ECF acknowledgment. No isolated browser
+provider or per-bot OS sandbox is configured; v2 health reports the browser as unavailable. Implementations
+are in `echo_adk/api/{server,service,store,budgets}.py`, `echo_adk/bots/{manager,schedules,triggers}.py`, and
+`echo_adk/core/{runner,ledger}.py`.
 
 ## Layout
 
@@ -136,15 +152,15 @@ echo_adk/
   core/     types (primitives + Envelope + Proof), policy (default-deny), models (loopback + CLI),
             broker (gate), runner (the loop), skills (Agent Skills loader), ledger, redact, log
   agents/   .json loader + strict mini-YAML subset + converter
-  api/      the frozen contract: service, SQLite store, loopback ThreadingHTTPServer
-  bots/     echoBots manager (scheduler, inbox, groups, daily caps)
+  api/      v1/v2 service, SQLite store and reservations, loopback ThreadingHTTPServer
+  bots/     echoBots manager, interval/calendar schedules, idempotent event inbox, groups
   mcp/      stdio JSON-RPC MCP server (tools = the agent's allowlist)
   a2a/      Agent2Agent card + echo-a2a/1.0 translator
   adk/      Google ADK adapter (optional extra): EchoModel, EchoToolset, EchoGovernancePlugin, app()
   cli.py    echo-adk run | validate | serve | card | mcp
 agents/     knowledge-scout.json, forge-steward.json      docs/examples/knowledge-scout.yaml
 deploy/     echo-adk-api.service (systemd, FORGE) + runbook
-docs/       CONTRACT.md (frozen contract + implementation notes), SLICES.md (12 build slices, status)
+docs/       CONTRACT.md (v1), CONTRACT_V2.md (additive API + migration), SLICES.md (build status)
 ```
 
 ## Configuration
@@ -157,12 +173,20 @@ docs/       CONTRACT.md (frozen contract + implementation notes), SLICES.md (12 
 | `ECHO_ADK_MODEL_ENDPOINT` / `ECHO_ADK_MODEL_NAME` | loopback OpenAI-compatible endpoint and model name for `qwen-local` | `http://127.0.0.1:11441` / `qwen` |
 | `ECHO_ADK_STATE_DIR` | ledger, proofs, memory, SQLite | `~/.echo/echo-adk` |
 | `ECHO_ADK_CAPS_FILE` | extra `Capability` records (or `echo.caps.detail` payloads) to extend the default-deny registry | unset |
-| `ECHO_ADK_DAILY_CAP_USD` | service-wide daily spend cap across all runs and bots | `200` |
+| `ECHO_ADK_DAILY_CAP_USD` | service-wide UTC settlement-day cap, including all unfinished holds | `200` |
 | `ECHO_ADK_DEBUG` | `1` for debug-level JSON logs on stderr | off |
 
 ## Status
 
-Version 0.1.0 bootstraps the core, the contract service, echoBots, the MCP and A2A adapters and the Google ADK
-adapter with 60+ offline tests. What each of the twelve research slices delivers, and what is still open
-(live gate run, memory/artifact services, eval harness, FORGE deployment, TS parity), is tracked in
-`docs/SLICES.md`. License: MIT, Echo Prime Tech LLC.
+Version 0.1.0 provides the core and adapters; the unreleased v2 work adds durable local automation,
+budget admission, and memory recall. Focused coverage lives in `tests/test_contract_v2.py`,
+`tests/test_budget_reservations.py`, `tests/test_bot_automation.py`, `tests/test_bot_schedules.py`,
+`tests/test_store_inbox.py`, and `tests/test_memory_recall.py`.
+
+The live gate/model path, Crystal/ECF and artifact services, browser isolation, evaluation harness,
+FORGE deployment certification, and rollback drill remain separate work in [`docs/SLICES.md`](docs/SLICES.md).
+Before downgrading, settle held reservations and use a consistent backup or reviewed state migration;
+older binaries do not maintain the new accounting/inbox projections or discover new memory filenames.
+See the migration and rollback section of [`docs/CONTRACT_V2.md`](docs/CONTRACT_V2.md).
+
+License: MIT, Echo Prime Tech LLC.

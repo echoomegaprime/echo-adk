@@ -2,6 +2,43 @@
 
 All notable changes to echo-adk. The format follows Keep a Changelog; versions follow SemVer.
 
+## [Unreleased]
+
+### Added
+
+- Additive `/v2` API and `docs/CONTRACT_V2.md`, mirrored in
+  `echo-cli/docs/echo-code/ECHO_BOTS_API_V2.md`; v1 response shapes remain versioned separately.
+- Local calendar schedules with IANA timezones, ISO weekdays, explicit DST behavior, and `skip`/`once`
+  missed-run policies; persisted scheduled jobs resume by their original run ID before execution starts.
+- Bounded event inboxes with durable `(bot, source, event_id)` deduplication, payload-conflict rejection,
+  untrusted event framing, and atomic message/run/receipt admission.
+- Atomic SQLite service and per-bot budget reservations for direct, inbox, event, scheduled, and group
+  runs; exact settlement, uncertain-cost reporting, holds spanning UTC midnight, and v2 budget health.
+- Bounded recall from each bot's local memory scope, integrity-checked records, durable write receipts
+  in final envelope data, and compatibility reads for legacy memory filenames. Crystal/ECF remains a
+  separate integration; local receipts do not claim an external acknowledgment.
+
+### Fixed
+
+- Insufficient daily allowance returns 429 before admitting new work; simultaneous admissions cannot
+  reserve the same funds. Deleting bot state preserves aggregate service spend and uncertainty.
+- Queued bot leases begin at dispatch using the immutable admitted template; waiting while paused no
+  longer consumes their TTL or widens their scopes. Direct run lease expiry remains unchanged.
+- Interrupted work is not replayed automatically; completed inbox delivery and group reservations are
+  recovered without another model call. Cancelling queued work preserves a bot's paused state.
+- Pending inbox lookup uses indexed role/state projections rather than a capped scan of old history.
+- The loopback API checks Host and browser-origin headers and requires JSON mutation bodies, with a
+  1 MiB limit. V1 bot responses require an upgrade for schedule keys beyond `every_s` (calendar or explicit
+  `missed` policy); v1 message responses omit event metadata that remains available through v2.
+
+### Operational notes
+
+- State migration is additive. Settle outstanding reservations before a downgrade, and use a consistent
+  backup or reviewed migration because older code does not maintain the new accounting/inbox columns.
+  Keep legacy memory files; old readers cannot discover new scope-encoded memory paths.
+- No isolated browser provider, Crystal/ECF service, live FORGE certification, or comparative bot
+  evaluation is delivered by this change. See `docs/CONTRACT_V2.md` and `docs/SLICES.md` for exact limits.
+
 ## [0.1.0] - 2026-11-04
 
 First bootstrap of the Echo Agent Development Kit (Commander order 2026-11-04).

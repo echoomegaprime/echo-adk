@@ -130,8 +130,39 @@ def test_cost_budget_uses_model_cost_per_call(scout, registry, lease_for):
     result = Runner(model, FakeBroker(), registry).run(
         scout, "x", lease_for(scout), budget=Budget(max_calls=10, max_cost_usd=0, max_wall_s=600)
     )
-    # agent lane allows 0 USD, so the first paid model call already exceeds the budget
-    assert result.status == "failed" and result.error["code"] == "budget_exceeded" and result.spent.cost_usd == pytest.approx(0.6)
+    # A known paid call must be denied before billing a free lane.
+    assert result.status == "failed" and result.error["code"] == "budget_exceeded"
+    assert result.spent.cost_usd == 0 and model.calls == 0
+
+
+@pytest.mark.parametrize("bad_cost", [float("nan"), float("inf"), -1.0, True, "0", 10**400])
+def test_invalid_provider_cost_cannot_be_treated_as_free(scout, registry, lease_for, bad_cost):
+    import dataclasses
+
+    class InvalidCost(ScriptedModel):
+        def complete(self, system, messages):
+            return dataclasses.replace(super().complete(system, messages), cost_usd=bad_cost)
+
+    model = InvalidCost([final_action("must not be accepted")])
+    result = Runner(model, FakeBroker(), registry).run(scout, "x", lease_for(scout))
+    assert result.status == "failed" and result.proof.verdict == "FAIL"
+    assert result.error["code"] == "unavailable" and model.calls == 1
+    assert result.spent.cost_usd == 0
+    assert result.steps[-1].kind == "model" and not result.steps[-1].ok
+    assert "cost_usd" not in result.steps[-1].data  # service conservatively retains the uncertain reservation
+
+
+def test_failed_capability_response_cannot_become_a_successful_run(scout, registry, lease_for):
+    import dataclasses
+
+    class UnavailableBroker(FakeBroker):
+        def invoke(self, *args, **kwargs):
+            return dataclasses.replace(super().invoke(*args, **kwargs), ok=False, data={"http_status": 503})
+
+    model = ScriptedModel([cap_action("echo.caps.search", q="x"), final_action("invented success")])
+    result = Runner(model, UnavailableBroker(), registry).run(scout, "x", lease_for(scout))
+    assert result.status == "failed" and result.proof.verdict == "FAIL" and model.calls == 1
+    assert result.error["code"] == "unavailable"
 
 
 def test_max_steps_without_final_is_unknown(scout, registry, lease_for):

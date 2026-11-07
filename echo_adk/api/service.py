@@ -19,12 +19,13 @@ from typing import Any, Optional
 from .. import PROFILE, SERVICE_NAME, __version__
 from ..agents import load_agents_dir
 from ..bots.manager import BotError, BotManager
-from ..core.broker import Broker, GateBroker
+from ..core.broker import Broker, BrokerError, GateBroker
 from ..core.ledger import Ledger, MemoryStore
 from ..core.log import get_logger
 from ..core.models import Model, ProviderUnavailable, build_model
 from ..core.policy import CapabilityRegistry
 from ..core.runner import STATUS_DONE, STATUS_FAILED, STATUS_QUEUED, STATUS_RUNNING, Runner
+from ..core.skills import SkillLibrary, SkillValidationError
 from ..core.types import (
     API_AGENT_NAME,
     BUDGET_CAPS,
@@ -90,6 +91,7 @@ class AdkService:
         daily_cap_usd: Optional[float] = None,
         start_scheduler: bool = True,
         scheduler_tick_s: float = 2.0,
+        skills_dir: Optional[str | Path] = None,
     ) -> None:
         self.agents_dir = Path(agents_dir)
         self.state_dir = Path(state_dir)
@@ -102,9 +104,13 @@ class AdkService:
         self.store = Store(self.state_dir)
         self.ledger = Ledger(self.state_dir)
         self.memory = MemoryStore(self.state_dir)
-        self.registry = registry or self._default_registry()
+        skills_root = skills_dir or os.environ.get("ECHO_ADK_SKILLS_DIR")
+        self.skill_library = SkillLibrary(skills_root) if skills_root else None
+        self.registry = registry if registry is not None else self._default_registry()
         self.model_factory = model_factory or (lambda model_id: build_model(model_id))
         self._broker = broker
+        if isinstance(broker, GateBroker):
+            broker.registry = self.registry
         self._executor = ThreadPoolExecutor(max_workers=max(1, workers), thread_name_prefix="echo-adk-run")
         self._stops: dict[str, threading.Event] = {}
         self._lock = threading.RLock()
@@ -125,7 +131,7 @@ class AdkService:
     @property
     def broker(self) -> Broker:
         if self._broker is None:
-            self._broker = GateBroker()
+            self._broker = GateBroker(registry=self.registry)
         return self._broker
 
     def close(self) -> None:
@@ -160,6 +166,17 @@ class AdkService:
         if bot_id is None:
             status["recovery"] = dict(self._recovery)
         return status
+
+    def validate_plugins(self, names: list[str]) -> None:
+        """Explicit plugin selection must have executable installed guidance."""
+        if not names:
+            return
+        if self.skill_library is None:
+            raise ApiError(503, "unavailable", "Install the requested skills and configure ECHO_ADK_SKILLS_DIR before selecting plugins")
+        try:
+            self.skill_library.context(names)
+        except SkillValidationError as exc:
+            raise ApiError(400, "invalid", str(exc)) from None
 
     def run_budget(self, run_id: str) -> dict[str, Any]:
         """A v2 accounting receipt; keep GET /runs/{id}'s frozen v1 keys intact."""
@@ -217,8 +234,19 @@ class AdkService:
         except ValidationError as exc:
             raise ApiError(400, "invalid", str(exc))
         unknown = [cap for cap in agent.capabilities if cap not in self.registry]
+        if unknown and isinstance(self.broker, GateBroker):
+            if len(unknown) > 64:
+                raise ApiError(400, "invalid", "At most 64 new capability IDs may be resolved per definition")
+            try:
+                for cap_id in unknown:
+                    self.registry.register(self.broker.resolve_capability(cap_id))
+            except BrokerError as exc:
+                raise ApiError(503 if exc.code == "unavailable" else 400, exc.code, str(exc), provider="echo-gate") from None
+            unknown = [cap for cap in agent.capabilities if cap not in self.registry]
         if unknown:
             raise ApiError(400, "invalid", f"capabilities not in the registry (default-deny): {unknown}")
+        if self.skill_library is not None:
+            self.validate_plugins(list(agent.skills))
         return agent
 
     def _write_agent_file(self, agent: EchoAgent) -> None:
@@ -281,8 +309,8 @@ class AdkService:
         if extra:
             raise ApiError(400, "invalid", f"lease: unknown field(s) {sorted(extra)}")
         scopes = given.get("scopes")
-        if not isinstance(scopes, list) or not scopes or not all(isinstance(s, str) for s in scopes):
-            raise ApiError(400, "invalid", "lease.scopes must be a non-empty list of exact capability ids")
+        if not isinstance(scopes, list) or not all(isinstance(s, str) for s in scopes):
+            raise ApiError(400, "invalid", "lease.scopes must be a list of exact capability ids; [] disables capability use")
         for scope in scopes:
             if "*" in scope or not CAP_ID.match(scope):
                 raise ApiError(400, "invalid", f"lease.scopes entry {scope!r} must be an exact capability id (no wildcards)")
@@ -415,7 +443,7 @@ class AdkService:
             bot_id=bot["bot_id"],
             message_id=message_id,
             group_id=group_id,
-            agent_override={"instruction": agent.instruction},
+            agent_override={"instruction": agent.instruction, "skills": list(agent.skills)},
             bot_lease_template=template,
         )
         return run_id
@@ -563,6 +591,8 @@ class AdkService:
         override = doc.get("agent_override") or {}
         if override.get("instruction"):
             agent = dataclasses.replace(agent, instruction=override["instruction"])
+        if isinstance(override.get("skills"), list):
+            agent = dataclasses.replace(agent, skills=tuple(override["skills"]))
         try:
             model = self.model_factory(agent.lane.model)
         except ProviderUnavailable as exc:
@@ -571,7 +601,7 @@ class AdkService:
             return self._finish(run_id, STATUS_FAILED, error={"code": "invalid", "message": str(exc)}) or doc
         lease = Lease.from_dict(doc["lease"])
         budget = Budget.from_dict(doc["budget"])
-        runner = Runner(model, self.broker, self.registry, ledger=self.ledger, memory=self.memory)
+        runner = Runner(model, self.broker, self.registry, ledger=self.ledger, memory=self.memory, skill_library=self.skill_library)
         # Persist before invoking anything. If the process disappears after this point, recovery
         # treats the cost as unknown and retains the ceiling rather than inventing a zero charge.
         self.store.update_run(run_id, execution_started=True)

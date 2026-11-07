@@ -27,8 +27,10 @@ systemctl daemon-reload
 systemctl enable --now echo-adk-api
 ```
 
-Only fall back to the sovereign key (`/home/forge/.echo_sovereign_key`) for a short smoke test, and rotate to the
-scoped key before leaving the service enabled.
+Use that service-specific key for smoke tests so validation exercises the deployed scopes. Active-catalog
+verification requires the existing catalog read scope in addition to the exact operation scopes. For
+privileged callers with an admitted lease, the host secret store can provide the matching 64-hex
+`ECHO_ADK_GATE_HMAC_SECRET`; a successful signature does not add any scopes or satisfy a separate TOTP gate.
 
 The unit is hardened for the `qwen-local` lane: `IPAddressDeny=any` (loopback only) and `ProtectHome=read-only`
 mean the CLI lanes (`claude`, `codex`, `grok`, `argon`) cannot reach the network or their `$HOME` login stores
@@ -54,7 +56,9 @@ ss -tlnp 'sport = :8378'                                               # 127.0.0
 | Need | Command |
 |---|---|
 | Restart after a code pull | `sudo systemctl restart echo-adk-api` |
-| Extend the capability registry | drop `capabilities.json` (`{"capabilities":[...]}` or `{"caps":[<echo.caps.detail payloads>]}`) into `/var/lib/echo/echo-adk/` or set `ECHO_ADK_CAPS_FILE`, then restart |
+| Extend the capability registry | New requested IDs are resolved from the authenticated active SDK catalog; a host-reviewed `ECHO_ADK_CAPS_FILE` can also supply full schemas |
+| Enable installed skills | Set `ECHO_ADK_SKILLS_DIR` to the host-owned installed skill root; verify all selected agent and bot skill names resolve |
+| Expose all v2 operations through the SDK | Follow `echo_adk/sdk/README.md` to install the authenticated host adapter and review the proposed registration manifest |
 | Change the model endpoint / name | `ECHO_ADK_MODEL_ENDPOINT` (loopback only) / `ECHO_ADK_MODEL_NAME` in the unit or env file |
 | Raise/lower the service daily cap | `ECHO_ADK_DAILY_CAP_USD` (default 200) in `/etc/echo/echo-adk.env` |
 | Ledger / proofs / memory | `/var/lib/echo/echo-adk/{ledger,proofs,memory}/`, SQLite `echo-adk.sqlite3` (WAL) |

@@ -1,0 +1,2933 @@
+{
+  "registration_status": "proposed_not_registered",
+  "requires": "Installed real SDK host adapter, verified owner mapping, existing Tier2 HMAC admission, and operator-reviewed registration.",
+  "capabilities": [
+    {
+      "id": "echo.adk.health",
+      "description": "Read local API readiness and service budget accounting. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/health",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.agent_list",
+      "description": "List actual agent definitions. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/agent.list",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.agent_get",
+      "description": "Read an agent definition. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/agent.get",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "maxLength": 63
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.agent_create",
+      "description": "Create a validated agent definition. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/agent.create",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "maxLength": 63
+          },
+          "role": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 64
+            },
+            "minItems": 0,
+            "maxItems": 256,
+            "uniqueItems": true
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^echo\\.[a-z0-9_]+(?:\\.[a-z0-9_]+)*$",
+              "maxLength": 128
+            },
+            "minItems": 0,
+            "maxItems": 256,
+            "uniqueItems": true
+          },
+          "lane": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "node": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "model": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+                "maxLength": 100
+              },
+              "budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "max_calls": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 120
+                  },
+                  "max_cost_usd": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 5
+                  },
+                  "max_wall_s": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4800
+                  }
+                },
+                "required": [],
+                "minProperties": 0
+              },
+              "concurrency": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16
+              }
+            },
+            "required": [
+              "node",
+              "model"
+            ],
+            "minProperties": 0
+          },
+          "max_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12000
+              }
+            ]
+          },
+          "origin": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "by": {
+                "type": "string",
+                "enum": [
+                  "owner",
+                  "echo"
+                ]
+              },
+              "prompt_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [],
+            "minProperties": 0
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "capabilities",
+          "lane"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.agent_replace",
+      "description": "Replace an existing agent definition. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/agent.replace",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "maxLength": 63
+          },
+          "role": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+              "maxLength": 64
+            },
+            "minItems": 0,
+            "maxItems": 256,
+            "uniqueItems": true
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^echo\\.[a-z0-9_]+(?:\\.[a-z0-9_]+)*$",
+              "maxLength": 128
+            },
+            "minItems": 0,
+            "maxItems": 256,
+            "uniqueItems": true
+          },
+          "lane": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "node": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "model": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$",
+                "maxLength": 100
+              },
+              "budget": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "max_calls": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 120
+                  },
+                  "max_cost_usd": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 5
+                  },
+                  "max_wall_s": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 4800
+                  }
+                },
+                "required": [],
+                "minProperties": 0
+              },
+              "concurrency": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 16
+              }
+            },
+            "required": [
+              "node",
+              "model"
+            ],
+            "minProperties": 0
+          },
+          "max_steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 64
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12000
+              }
+            ]
+          },
+          "origin": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "by": {
+                "type": "string",
+                "enum": [
+                  "owner",
+                  "echo"
+                ]
+              },
+              "prompt_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "required": [],
+            "minProperties": 0
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "capabilities",
+          "lane"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.agent_delete",
+      "description": "Delete an unreferenced agent definition. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/agent.delete",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "maxLength": 63
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.run_create",
+      "description": "Admit a budgeted, leased run through the governed runner. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/run.create",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "maxLength": 63
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "budget": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "max_calls": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 120
+              },
+              "max_cost_usd": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 5
+              },
+              "max_wall_s": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4800
+              }
+            },
+            "required": [],
+            "minProperties": 0
+          },
+          "lease": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^echo\\.[a-z0-9_]+(?:\\.[a-z0-9_]+)*$",
+                  "maxLength": 128
+                },
+                "minItems": 0,
+                "maxItems": 256
+              },
+              "ttl_s": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4800
+              },
+              "max_uses": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 120
+              }
+            },
+            "required": [
+              "scopes"
+            ],
+            "minProperties": 0
+          }
+        },
+        "required": [
+          "agent",
+          "prompt"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.run_list",
+      "description": "List run summaries. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/run.list",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "maxLength": 63
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "required": [],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.run_get",
+      "description": "Read a run, proof and budget settlement receipt. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/run.get",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.adk.run_stop",
+      "description": "Cancel queued work or request a cooperative stop. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/run.stop",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "run_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.list",
+      "description": "List bots and their current schedules, leases and budgets. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.list",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": [],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.create",
+      "description": "Create a paused bot with its own logical memory scope. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.create",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team"
+            ]
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "every_s": {
+                        "type": "integer",
+                        "minimum": 60,
+                        "maximum": 604800
+                      },
+                      "missed": {
+                        "type": "string",
+                        "enum": [
+                          "skip",
+                          "once"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "every_s"
+                    ],
+                    "minProperties": 0
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "type": "string",
+                        "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                      },
+                      "tz": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "weekdays": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 7
+                        },
+                        "minItems": 1,
+                        "maxItems": 7,
+                        "uniqueItems": true
+                      },
+                      "missed": {
+                        "type": "string",
+                        "enum": [
+                          "skip",
+                          "once"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "tz",
+                      "weekdays"
+                    ],
+                    "minProperties": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "maxLength": 12000
+              }
+            ]
+          },
+          "plugins": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 0,
+            "maxItems": 32
+          },
+          "daily_cost_cap_usd": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "lease": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^echo\\.[a-z0-9_]+(?:\\.[a-z0-9_]+)*$",
+                  "maxLength": 128
+                },
+                "minItems": 0,
+                "maxItems": 256
+              },
+              "ttl_s": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4800
+              },
+              "max_uses": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 120
+              }
+            },
+            "required": [],
+            "minProperties": 0
+          },
+          "agent": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{1,62}$",
+            "maxLength": 63
+          }
+        },
+        "required": [
+          "name",
+          "agent"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.get",
+      "description": "Read current bot state. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.get",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "bot_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.update",
+      "description": "Update future configuration after pausing and draining the bot. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.update",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "personal",
+              "team"
+            ]
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "every_s": {
+                        "type": "integer",
+                        "minimum": 60,
+                        "maximum": 604800
+                      },
+                      "missed": {
+                        "type": "string",
+                        "enum": [
+                          "skip",
+                          "once"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "every_s"
+                    ],
+                    "minProperties": 0
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "at": {
+                        "type": "string",
+                        "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+                      },
+                      "tz": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "weekdays": {
+                        "type": "array",
+                        "items": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 7
+                        },
+                        "minItems": 1,
+                        "maxItems": 7,
+                        "uniqueItems": true
+                      },
+                      "missed": {
+                        "type": "string",
+                        "enum": [
+                          "skip",
+                          "once"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "at",
+                      "tz",
+                      "weekdays"
+                    ],
+                    "minProperties": 0
+                  }
+                ]
+              }
+            ]
+          },
+          "instruction": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "string",
+                "maxLength": 12000
+              }
+            ]
+          },
+          "plugins": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            },
+            "minItems": 0,
+            "maxItems": 32
+          },
+          "daily_cost_cap_usd": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 5
+          },
+          "lease": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^echo\\.[a-z0-9_]+(?:\\.[a-z0-9_]+)*$",
+                  "maxLength": 128
+                },
+                "minItems": 0,
+                "maxItems": 256
+              },
+              "ttl_s": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4800
+              },
+              "max_uses": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 120
+              }
+            },
+            "required": [],
+            "minProperties": 0
+          }
+        },
+        "required": [
+          "bot_id"
+        ],
+        "minProperties": 2
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.pause",
+      "description": "Pause future bot work. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.pause",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "bot_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.resume",
+      "description": "Resume the bot's already configured work. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.resume",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "bot_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.stop",
+      "description": "Pause the bot and request cancellation of its current work. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.stop",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "bot_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.delete",
+      "description": "Delete eligible bot-owned data while preserving fleet accounting. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.delete",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "bot_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.message",
+      "description": "Admit a bot inbox message without resuming a paused bot. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.message",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          }
+        },
+        "required": [
+          "bot_id",
+          "text"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.messages",
+      "description": "Read a page of untrusted inbox messages and event provenance. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.messages",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "since": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 200
+          }
+        },
+        "required": [
+          "bot_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.event",
+      "description": "Admit one bounded, durable, idempotent untrusted event. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.event",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "event_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+          },
+          "source": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_.-]{0,63}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000
+          }
+        },
+        "required": [
+          "bot_id",
+          "event_id",
+          "source",
+          "text"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.group_create",
+      "description": "Reserve 2–6 bots and admit a bounded sequential group task. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/group.create",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "bots": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            "minItems": 2,
+            "maxItems": 6,
+            "uniqueItems": true
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          }
+        },
+        "required": [
+          "name",
+          "bots",
+          "prompt"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.group_get",
+      "description": "Read a group's actual lifecycle and shared transcript. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/group.get",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "group_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "tier:2",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    }
+  ]
+}

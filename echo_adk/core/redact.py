@@ -23,7 +23,7 @@ _TOKENS = re.compile(
 _PRIVATE_KEY = re.compile(r"-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----")
 _SECRET_FIELD = re.compile(
     r"^(?:api[_-]?key|apikey|[a-z0-9_-]*token|[a-z0-9_-]*secret|password|passwd|credential|credentials|authorization"
-    r"|bearer|private[_-]?key|[a-z0-9_-]*[_-]key|key)$",
+    r"|bearer|hmac|secret_hmac|private[_-]?key|[a-z0-9_-]*[_-]key|key)$",
     re.IGNORECASE,
 )
 _AUTH_SCHEMES = ("bearer", "basic", "token", "digest")

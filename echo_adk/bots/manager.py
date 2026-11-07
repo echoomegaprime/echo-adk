@@ -184,8 +184,18 @@ class BotManager:
             self.store.put_bot(bot)
 
     # ------------------------------------------------------------------ records
+    def _validate_skill_context(self, agent: EchoAgent, plugins: list[str]) -> None:
+        # Runtime loads one deduplicated context. Validate that same union, not
+        # two individually valid fragments whose count/size can exceed its cap.
+        # With no configured library, declared agent skills remain metadata;
+        # explicit plugins still require an installed library as before.
+        selected = list(dict.fromkeys((*agent.skills, *plugins))) if self.service.skill_library is not None else plugins
+        self.service.validate_plugins(selected)
+
     def _agent_for(self, bot: Mapping[str, Any]) -> EchoAgent:
         agent = self.service.get_agent(bot["agent"])
+        if bot.get("plugins"):
+            agent = dataclasses.replace(agent, skills=tuple(dict.fromkeys((*agent.skills, *bot["plugins"]))))
         instruction = bot.get("instruction")
         if instruction:
             merged = f"{agent.instruction}\n\n{instruction}" if agent.instruction else instruction
@@ -249,8 +259,9 @@ class BotManager:
         if instruction is not None:
             instruction = _text(instruction, "instruction", MAX_PROMPT_CHARS)
         plugins = body.get("plugins", [])
-        if not isinstance(plugins, list) or not all(isinstance(p, str) and 0 < len(p) <= 64 for p in plugins):
-            raise BotError("plugins must be a list of skill names")
+        if not isinstance(plugins, list) or len(plugins) > 32 or not all(isinstance(p, str) and 0 < len(p) <= 64 for p in plugins):
+            raise BotError("plugins must list at most 32 skill names of at most 64 characters")
+        self._validate_skill_context(agent, plugins)
         cap = body.get("daily_cost_cap_usd", DEFAULT_DAILY_CAP_USD)
         if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not 0 <= cap <= MAX_DAILY_CAP_USD:
             raise BotError("daily_cost_cap_usd must be between 0 and 5")
@@ -281,6 +292,83 @@ class BotManager:
     def get_bot(self, bot_id: str) -> dict[str, Any]:
         return self._public(self._require(bot_id))
 
+    def update_bot(self, bot_id: str, body: Any) -> dict[str, Any]:
+        """Edit future work only after the owner has stopped and drained the bot."""
+        from ..api.service import ApiError
+
+        allowed = {"name", "mode", "schedule", "instruction", "plugins", "lease", "daily_cost_cap_usd"}
+        if not isinstance(body, Mapping) or not body or set(body) - allowed:
+            raise BotError("update requires a non-empty object of mutable bot fields")
+        with self._lock, self.store.transaction():
+            bot = self._require(bot_id)
+            active = self.store.get_run(bot["active_run_id"]) if bot.get("active_run_id") else None
+            group = self.store.get_group(bot["group_reservation"]) if bot.get("group_reservation") else None
+            if (
+                bot["status"] != "paused"
+                or (active is not None and active["status"] in ("queued", "running"))
+                or (group is not None and group["status"] in ("queued", "running"))
+                or self.store.count_messages(bot_id, pending_only=True)
+            ):
+                raise ApiError(409, "conflict", "Stop the bot and wait for its active and queued work to finish before editing")
+            updated = dict(bot)
+            if "name" in body:
+                updated["name"] = _text(body["name"], "name", 64)
+            if "mode" in body:
+                if body["mode"] not in BOT_MODES:
+                    raise BotError("mode must be personal or team")
+                updated["mode"] = body["mode"]
+            if "instruction" in body:
+                instruction = body["instruction"]
+                if instruction is not None and instruction != "":
+                    instruction = _text(instruction, "instruction", MAX_PROMPT_CHARS)
+                updated["instruction"] = instruction or None
+            if "plugins" in body:
+                plugins = body["plugins"]
+                if not isinstance(plugins, list) or len(plugins) > 32 or not all(isinstance(p, str) and 0 < len(p) <= 64 for p in plugins):
+                    raise BotError("plugins must list at most 32 skill names of at most 64 characters")
+                updated["plugins"] = list(dict.fromkeys(plugins))
+            if "daily_cost_cap_usd" in body:
+                cap = body["daily_cost_cap_usd"]
+                if isinstance(cap, bool) or not isinstance(cap, (int, float)) or not 0 <= cap <= MAX_DAILY_CAP_USD:
+                    raise BotError("daily_cost_cap_usd must be between 0 and 5")
+                updated["daily_cost_cap_usd"] = round(float(cap), 2)
+            if "lease" in body:
+                if not isinstance(body["lease"], Mapping):
+                    raise BotError("lease must be an object")
+                # A partial lease change never fills omitted scopes from the
+                # agent's broader allowlist. Empty scopes revoke all tools.
+                updated["lease"] = bot_lease_template(self.service.get_agent(bot["agent"]), {**bot["lease"], **body["lease"]})
+            if "schedule" in body:
+                updated["schedule"] = validate_schedule(body["schedule"])
+                updated.pop("next_run_ts", None)
+                if updated["schedule"] is not None:
+                    updated["next_run_ts"] = next_occurrence(updated["schedule"], self._clock())
+            self._validate_skill_context(self.service.get_agent(bot["agent"]), updated.get("plugins", []))
+            self.store.put_bot(updated)
+        log.info("bot_updated", bot_id=bot_id, fields=sorted(body))
+        return self._public(updated)
+
+    def stop_bot(self, bot_id: str) -> dict[str, Any]:
+        """Pause new work and request cancellation of this bot's admitted runs.
+
+        Cancellation is best effort for an in-flight provider call. Capture the
+        bot's work under its admission lock, then call the service outside that
+        lock so completion callbacks cannot invert lock order.
+        """
+        with self._lock, self.store.transaction():
+            bot = self._require(bot_id)
+            self.pause(bot_id)
+            run_ids = {m["run_id"] for m in self.store.pending_messages(bot_id) if m.get("run_id")}
+            run_ids.update(run_id for run_id in (bot.get("active_run_id"), bot.get("scheduled_run_id")) if run_id)
+            group = self.store.get_group(bot["group_reservation"]) if bot.get("group_reservation") else None
+            if group is not None:
+                run_ids.update(run_id for member, run_id in zip(group["bots"], group["run_ids"], strict=False) if member == bot_id)
+            active_ids = sorted(run_id for run_id in run_ids if (self.store.get_run(run_id) or {}).get("status") in ("queued", "running"))
+        for run_id in active_ids:
+            self.service.stop_run(run_id)
+        current = self.get_bot(bot_id)
+        return {"bot_id": bot_id, "status": current["status"], "stop_requested": True, "run_ids": active_ids}
+
     def resume(self, bot_id: str) -> dict[str, Any]:
         with self._lock:
             bot = self._require(bot_id)
@@ -309,7 +397,7 @@ class BotManager:
         return self._public(bot)
 
     def delete(self, bot_id: str) -> dict[str, Any]:
-        """Remove every trace of the bot: record, messages, runs, ledger/proofs, memory, spend."""
+        """Remove bot-local state; aggregate fleet accounting and shared group history remain."""
         from ..api.service import ApiError
 
         with self._lock:

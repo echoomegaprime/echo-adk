@@ -123,7 +123,7 @@ The existing v1 wire shapes are documented in [`docs/CONTRACT.md`](docs/CONTRACT
 and run budgets are clamped to the agent lane and service limits (120 calls, 5 USD, 4800 s).
 
 [`docs/CONTRACT_V2.md`](docs/CONTRACT_V2.md) documents the same routes under `/v2`, calendar schedules,
-`POST /v2/bots/{id}/events`, budget accounting, and truthful local connection status. V1 clients receive
+`POST /v2/bots/{id}/events`, paused bot editing, cooperative stop, budget accounting, and truthful local connection status. V1 clients receive
 an explicit 409 upgrade response when a bot's schedule has any key beyond `every_s`, including calendar
 schedules or an explicit `missed` policy. V1 messages omit event metadata; v2 messages retain it. Both
 versions require a valid loopback Host, reject browser Origin headers, and require JSON for nonempty
@@ -145,6 +145,31 @@ provider or per-bot OS sandbox is configured; v2 health reports the browser as u
 are in `echo_adk/api/{server,service,store,budgets}.py`, `echo_adk/bots/{manager,schedules,triggers}.py`, and
 `echo_adk/core/{runner,ledger}.py`.
 
+## SDK integration
+
+The outbound broker follows the actual Echo SDK envelope: flat application fields with a verified
+`command`, exact active-catalog membership, current tier/scope metadata, and successful outer HTTP,
+SDK status, target HTTP status, and target success flags. Detail lookup alone does not establish active
+registration. Newly requested IDs can be hydrated from the live catalog instead of requiring a hand-edited
+seed file; the gate still validates its authoritative schema and enforces the credential's scopes.
+The catalog's help parameters are a partial description, so they are not represented as a complete
+JSON schema. Gate run IDs and traces remain routing evidence in the capability envelope, not signed
+certification. Redirects are refused and the broker never retries an uncertain operation.
+
+For an already admitted privileged lease, the broker supports the gate's exact pre-dispatch HMAC
+challenge using an explicitly configured per-key signer. The trusted host supplies the secret through
+its existing secret store; ADK does not retrieve credential tables, mint keys, grant scopes, or answer
+TOTP/approval challenges. A missing signer is reported as unavailable.
+
+[`echo_adk/sdk/README.md`](echo_adk/sdk/README.md) describes the concrete inbound SDK host adapter for
+all 23 v2 operations, its strict schemas, single-use gate admission, and proposed registrations.
+The registration manifest is reviewable source data. Installing this package does not register or
+activate it in a live SDK catalog. Existing legacy `echo.bot.*` notification capabilities are separate.
+
+Installed skill guidance can be enabled with `ECHO_ADK_SKILLS_DIR`. Selected bot plugins must resolve
+there; their redacted guidance and digest enter the actual model run, without adding capability authority.
+Health and run receipts distinguish configured/applied guidance from legacy descriptive skill names.
+
 ## Layout
 
 ```
@@ -157,6 +182,7 @@ echo_adk/
   mcp/      stdio JSON-RPC MCP server (tools = the agent's allowlist)
   a2a/      Agent2Agent card + echo-a2a/1.0 translator
   adk/      Google ADK adapter (optional extra): EchoModel, EchoToolset, EchoGovernancePlugin, app()
+  sdk/      all v2 operation adapters, optional real SDK host factory, proposed registration manifest
   cli.py    echo-adk run | validate | serve | card | mcp
 agents/     knowledge-scout.json, forge-steward.json      docs/examples/knowledge-scout.yaml
 deploy/     echo-adk-api.service (systemd, FORGE) + runbook
@@ -170,9 +196,12 @@ docs/       CONTRACT.md (v1), CONTRACT_V2.md (additive API + migration), SLICES.
 | `ECHO_GATE_URL` | Echo SDK gate origin (loopback unless `ECHO_ADK_GATE_ALLOW_REMOTE=1`) | `http://127.0.0.1:8000` |
 | `ECHO_ADK_GATE_KEY` | the gate API key; read at call time, never stored or logged | unset -> capability calls are `unavailable` |
 | `ECHO_ADK_GATE_KEY_ENV` | name of the variable that holds the key | `ECHO_ADK_GATE_KEY` |
+| `ECHO_ADK_GATE_HMAC_SECRET` | admitted per-key 64-hex signer supplied by the host secret store; used only for an exact privileged HMAC challenge | unset |
+| `ECHO_ADK_GATE_HMAC_SECRET_ENV` | name of the variable containing that signer | `ECHO_ADK_GATE_HMAC_SECRET` |
 | `ECHO_ADK_MODEL_ENDPOINT` / `ECHO_ADK_MODEL_NAME` | loopback OpenAI-compatible endpoint and model name for `qwen-local` | `http://127.0.0.1:11441` / `qwen` |
 | `ECHO_ADK_STATE_DIR` | ledger, proofs, memory, SQLite | `~/.echo/echo-adk` |
 | `ECHO_ADK_CAPS_FILE` | extra `Capability` records (or `echo.caps.detail` payloads) to extend the default-deny registry | unset |
+| `ECHO_ADK_SKILLS_DIR` | host-owned directory of installed named skill folders | unset; skill labels are metadata and explicit bot plugins are unavailable |
 | `ECHO_ADK_DAILY_CAP_USD` | service-wide UTC settlement-day cap, including all unfinished holds | `200` |
 | `ECHO_ADK_DEBUG` | `1` for debug-level JSON logs on stderr | off |
 

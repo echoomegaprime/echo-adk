@@ -11,13 +11,13 @@ from typing import Any, Optional
 
 from . import __version__
 from .agents import load_agent, load_agents_dir
-from .core.broker import GateBroker
+from .core.broker import BrokerError, GateBroker
 from .core.ledger import Ledger
 from .core.log import configure, get_logger
 from .core.models import ProviderUnavailable, build_model, parse_models_config
 from .core.policy import CapabilityRegistry
 from .core.runner import Runner
-from .core.skills import scan_skills
+from .core.skills import SkillLibrary, scan_skills
 from .core.types import Budget, Lease, ValidationError, new_id
 
 log = get_logger("cli")
@@ -66,7 +66,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         agent = dataclasses.replace(agent, max_steps=args.max_steps)
     run_id = new_id()
     lease = Lease.mint(run_id, agent.capabilities, ttl_s=budget.max_wall_s, max_uses=budget.max_calls)
-    result = Runner(model, broker, registry, ledger=ledger).run(
+    skills_root = os.environ.get("ECHO_ADK_SKILLS_DIR")
+    result = Runner(model, broker, registry, ledger=ledger, skill_library=SkillLibrary(skills_root) if skills_root else None).run(
         agent, args.prompt, lease, run_id=run_id, budget=Budget.from_dict({}, defaults=budget)
     )
     _emit(result.to_dict() if args.full else result.proof.to_dict() if result.proof else {})
@@ -195,6 +196,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
+    except BrokerError as exc:
+        sys.stderr.write(json.dumps({"error": exc.code, "provider": exc.provider, "message": str(exc)}) + "\n")
+        return 1
     except ProviderUnavailable as exc:
         sys.stderr.write(json.dumps({"error": "unavailable", "provider": exc.provider, "message": str(exc)}) + "\n")
         return 1

@@ -35,7 +35,9 @@ V2 includes every existing route with `/v2` prepended. Unless noted below, reque
 | `POST /v2/runs/{id}/stop` | 200 | Cancel unstarted work or request cooperative stop of active work. |
 | `GET /v2/bots`, `GET /v2/bots/{id}` | 200 | Existing bot fields, scheduling timestamps when available, and `budget`. |
 | `POST /v2/bots` | 201 | Create a paused bot, including interval or calendar scheduling. |
+| `PUT /v2/bots/{id}` | 200 | Update future configuration on a paused bot with no unfinished work. |
 | `POST /v2/bots/{id}/resume`, `POST /v2/bots/{id}/pause` | 200 | Existing explicit lifecycle controls. |
+| `POST /v2/bots/{id}/stop` | 200 | Pause new dispatch and request cancellation of this bot's queued and active runs. |
 | `DELETE /v2/bots/{id}` | 200 | Delete eligible bot state; active work returns 409. |
 | `POST /v2/bots/{id}/message` | 202 | Queue one inbox message and one budget-admitted run. |
 | `GET /v2/bots/{id}/messages` | 200 | Existing message pagination; event messages also identify their source. |
@@ -63,22 +65,35 @@ V1 `GET /bots/{id}/messages` returns the existing message fields and omits the n
   "features": {
     "calendar_schedules": true,
     "idempotent_events": true,
-    "memory_recall": true
+    "memory_recall": true,
+    "bot_editing": true,
+    "bot_stopping": true
   },
   "connections": {
     "memory": {"provider": "local", "recall": true, "durable": true, "shared": false},
-    "browser": {"available": false, "reason": "No isolated browser provider is configured"}
+    "browser": {"available": false, "reason": "No isolated browser provider is configured"},
+    "skills": {"configured": false, "provider": "installed", "scripts_execute_automatically": false}
   }
 }
 ```
 
 The response also contains `budgets`, described in section 6. These fields identify implemented local capabilities. `ok: true` means the API is responding; it is not evidence that a provider is logged in, the SDK gate is reachable, Crystal/ECF acknowledged a write, or deployment certification passed. The browser connection is explicitly unavailable. No per-bot browser or OS sandbox is created by this API.
 
+The skill connection reports whether `ECHO_ADK_SKILLS_DIR` points to an installed skill library. Explicit nonempty bot `plugins` require that library and validated names; an unconfigured library returns 503 before bot creation or editing. Existing agent `skills` labels remain descriptive metadata when no library is configured, and the first model envelope reports `skill_context.provider: "unconfigured"` with `applied: []`. When configured, the runner loads the agent's skills plus the bot's plugins from that host-owned root, checks names and path containment, redacts the guidance, bounds the combined context to 64,000 characters, and records the applied names and SHA-256 in `data.skill_context`. Missing or oversized installed guidance fails before model invocation. Queued bot work retains its selected skill names. Guidance does not grant tools or automatically execute bundled scripts.
+
 Implementation: `echo-adk/echo_adk/api/server.py` and `echo-adk/echo_adk/api/service.py` (`health`, `budget_health`).
 
 ## 4. Bots and schedules
 
 Existing bot creation fields remain available: `name`, `agent`, `mode`, `schedule`, `instruction`, `plugins`, `lease`, and `daily_cost_cap_usd`. Unknown fields are rejected. Bots start `paused`. `mode` is `personal` or `team`; it does not create a separate authentication boundary. A bot's daily cap is between 0 and 5 USD, inclusive.
+
+### Editing and stopping
+
+`PUT /v2/bots/{id}` accepts a nonempty partial object containing `name`, `mode`, `schedule`, `instruction`, `plugins`, `lease`, or `daily_cost_cap_usd`. The bot ID, agent, memory scope, and creation time are immutable. Editing requires the bot to be paused, its inbox to have no pending work, and any active or reserved group work to have finished; otherwise the service returns 409 `conflict`. The update does not resume the bot.
+
+Omitted fields retain their values. `schedule: null` clears scheduling, `instruction: null` or an empty string clears the instruction, and `plugins: []` clears selected skills. A partial lease retains omitted limits and scopes; `scopes: []` revokes all capability use. Scopes must remain inside the agent's allowlist. A changed schedule gets a newly computed deadline. The update and stop routes are v2-only.
+
+`POST /v2/bots/{id}/stop` accepts only `{}` and returns `{bot_id, status, stop_requested: true, run_ids: [...]}`. It pauses future dispatch and requests cancellation of the queued and active runs captured for that bot. Unstarted work is cancelled without replay; in-flight provider calls can finish before the cooperative stop takes effect. The runner will not start a newly proposed capability after observing cancellation. A returned `status: "running"` is an acknowledgement of the request, not a claim that the worker has already stopped. Read the bot and run states to confirm completion. Stopping one group member does not cancel the other members' work, and a still-active group reservation prevents configuration changes. New inbox items can still be admitted while the bot is paused.
 
 An interval schedule accepts an integer `every_s` from 60 through 604800 and optional `missed`:
 
@@ -200,6 +215,8 @@ Implementation: `echo-adk/echo_adk/api/budgets.py`, `echo-adk/echo_adk/api/store
 ## 7. Leases and local memory
 
 Bot admission snapshots the validated lease template: exact capability scopes, TTL, and maximum uses. Actual dispatch mints a fresh per-turn lease from that immutable snapshot. A long pause does not consume the lease TTL; the original run ID and event receipt remain unchanged. A later bot configuration cannot widen queued authorization, and this path does not add a `grant_ref`. Direct run leases keep their original expiry semantics. Legacy queued bot rows without a snapshot keep their original expiry rather than inventing a new grant.
+
+An explicit direct-run lease may use `scopes: []` to disable all capability calls while permitting model reasoning. This narrows authority even when the agent declares tools; it does not substitute tools when a requested external capability is missing.
 
 Local memory is scoped to `bot:<id>` for bot turns and `agent:<name>` for direct service runs. It is stored under the service state directory, not in Crystal/ECF. Before model invocation, the runner reads up to 20 recent records from the exact scope and selects the newest history that fits a 12,000-character serialized context bound. Individual selected values are capped at 2,500 characters. The store bounds each record to 128 KiB and scans at most the final 4 MiB of each relevant memory file. History is redacted and included as an explicitly untrusted user message, never as a system instruction or permission.
 

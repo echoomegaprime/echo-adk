@@ -51,7 +51,11 @@ ROUTES: list[Route] = [
     ("POST", re.compile(r"^/groups$"), "create_group"),
     ("GET", re.compile(rf"^/groups/{ID}$"), "get_group"),
 ]
-V2_ROUTES: list[Route] = [("POST", re.compile(rf"^/bots/{ID}/events$"), "bot_event")]
+V2_ROUTES: list[Route] = [
+    ("POST", re.compile(rf"^/bots/{ID}/events$"), "bot_event"),
+    ("PUT", re.compile(rf"^/bots/{ID}$"), "update_bot"),
+    ("POST", re.compile(rf"^/bots/{ID}/stop$"), "stop_bot"),
+]
 
 
 def is_loopback_host(host: str) -> bool:
@@ -200,11 +204,22 @@ class Handler(BaseHTTPRequestHandler):
                 return 200, {
                     **service.health(),
                     "contract_version": 2,
-                    "features": {"calendar_schedules": True, "idempotent_events": True, "memory_recall": True},
+                    "features": {
+                        "calendar_schedules": True,
+                        "idempotent_events": True,
+                        "memory_recall": True,
+                        "bot_editing": True,
+                        "bot_stopping": True,
+                    },
                     "budgets": service.budget_health(),
                     "connections": {
                         "memory": {"provider": "local", "recall": True, "durable": True, "shared": False},
                         "browser": {"available": False, "reason": "No isolated browser provider is configured"},
+                        "skills": {
+                            "configured": service.skill_library is not None,
+                            "provider": "installed",
+                            "scripts_execute_automatically": False,
+                        },
                     },
                 }
             return 200, service.health()
@@ -238,6 +253,12 @@ class Handler(BaseHTTPRequestHandler):
             return 201, bot_response(service.create_bot(body))
         if name == "get_bot":
             return 200, bot_response(service.bots.get_bot(params["id"]))
+        if name == "update_bot":
+            return 200, bot_response(service.bots.update_bot(params["id"], body))
+        if name == "stop_bot":
+            if body != {}:
+                raise ApiError(400, "invalid", "stop takes no fields")
+            return 200, service.bots.stop_bot(params["id"])
         if name == "resume_bot":
             bot_response(service.bots.get_bot(params["id"]))  # check version before mutation
             return 200, bot_response(service.bots.resume(params["id"]))

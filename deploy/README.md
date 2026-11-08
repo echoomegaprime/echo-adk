@@ -67,7 +67,46 @@ ss -tlnp 'sport = :8378'                                               # 127.0.0
 | Change the model endpoint / name | `ECHO_ADK_MODEL_ENDPOINT` (loopback only) / `ECHO_ADK_MODEL_NAME` in the unit or env file |
 | Raise/lower the service daily cap | `ECHO_ADK_DAILY_CAP_USD` (default 200) in `/etc/echo/echo-adk.env` |
 | Ledger / proofs / memory | `/var/lib/echo/echo-adk/{ledger,proofs,memory}/`, SQLite `echo-adk.sqlite3` (WAL) |
-| Rollback | `git -C /home/forge/echo-adk checkout <previous sha> && sudo systemctl restart echo-adk-api`; state is forward-compatible within 0.x |
+| Rollback | Restore the reviewed prior code and its consistent state backup using the procedure below; reverting only the executable is insufficient |
+
+### Upgrade backup and rollback
+
+The v2 worker adds durable budget reservations, spend and inbox projections, event
+receipts, and encoded memory filenames. Older code does not maintain all of that
+state. A version number within `0.x` does not establish downgrade compatibility.
+The authoritative migration requirements are in `docs/CONTRACT_V2.md`, section 8.
+
+Before an upgrade:
+
+1. Record the running commit, installed dependency versions, service definition,
+   configured state and agent directories, and the actual host. Retain protected
+   host configuration through its existing secret-store and permission controls.
+2. Stop admission from Prime and other callers, allow or explicitly stop active
+   work, and confirm that the worker service has stopped. Keep all writers stopped
+   while making the snapshot; copying individual live SQLite files is insufficient.
+3. Take one consistent backup of the **entire state directory**, including the
+   SQLite database and any WAL/journal files, memory, ledgers, and proofs. Back up
+   the agent definitions with that release. Preserve access permissions and record
+   the backup manifest and checksums outside the state being upgraded.
+4. Verify the backup can be restored into a separate directory. Prevent any restored
+   copy from dispatching tasks or reaching production providers during verification.
+   Record the verification result and the rollback commit before activation.
+
+Before a downgrade, stop new admissions again and settle or cancel every new-format
+held reservation. Reconcile work admitted after the backup, its recorded spend,
+memory, event receipts, and any external effects. Restoring a backup does not undo
+an external action or establish that repeating it is safe.
+
+Restore the matching prior code, dependencies, agent definitions, and complete
+consistent state backup, or use an explicitly reviewed migration and reconciliation.
+Do not run old and new workers against the same upgraded database. Do not blindly
+rename or merge legacy `__` memory files with newer `%3A` files: their scope identity
+and visibility differ. Preserve newer evidence separately for reconciliation.
+
+Verify the restored worker identity, state integrity, budget accounting, queued
+work, and relevant Prime behavior before reopening admissions. Keep the failed
+candidate and the rollback evidence available. This procedure documents the required
+work; it does not assert that a production rollback rehearsal has been completed.
 
 ### Command line shape
 

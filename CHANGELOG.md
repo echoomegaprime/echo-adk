@@ -17,6 +17,13 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
 - Bounded recall from each bot's local memory scope, integrity-checked records, durable write receipts
   in final envelope data, and compatibility reads for legacy memory filenames. Crystal/ECF remains a
   separate integration; local receipts do not claim an external acknowledgment.
+- All 23 v2 agent, run, bot, event, and group operations have closed SDK contracts and an authenticated
+  host adapter. Registration stays explicit; direct target calls cannot substitute for SDK gate admission.
+- Paused bot configuration updates, cooperative stop, and bounded installed-skill guidance with
+  applied-skill receipts. Updating or stopping a bot never implicitly resumes it.
+- Certification Forge App opt-in and a bounded standard-library journey that executes real local
+  policy, SDK schema, durable event/budget, memory, and interval-scheduling checks. Offline evidence is
+  explicitly separated from issuer verdicts and signed production E2E attestations.
 
 ### Fixed
 
@@ -36,6 +43,8 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
 - State migration is additive. Settle outstanding reservations before a downgrade, and use a consistent
   backup or reviewed migration because older code does not maintain the new accounting/inbox columns.
   Keep legacy memory files; old readers cannot discover new scope-encoded memory paths.
+- Deployment instructions require complete stopped-writer backups, restore verification, and
+  reconciliation of work admitted after the backup; reverting only the executable is insufficient.
 - No isolated browser provider, Crystal/ECF service, live FORGE certification, or comparative bot
   evaluation is delivered by this change. See `docs/CONTRACT_V2.md` and `docs/SLICES.md` for exact limits.
 

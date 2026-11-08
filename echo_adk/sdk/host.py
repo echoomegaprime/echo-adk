@@ -78,7 +78,7 @@ class InvocationMiddleware:
             _FRAME.reset(token)
 
 
-def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projector: Any = None) -> Any:
+def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projector: Any = None, scope_match: Any = None) -> Any:
     """Mount on the SDK's actual app before startup; dependencies default to real host helpers.
 
     Injectable helper arguments support offline host-contract tests. They are
@@ -95,9 +95,10 @@ def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projec
         raise RuntimeError("Install the ADK SDK adapter before the SDK host starts serving requests")
     sdk = sdk or importlib.import_module("routers.sdk_invoke")
     projector = projector or importlib.import_module("routers._dispatcher_projection").project_envelope
+    scope_match = scope_match or importlib.import_module("routers._scope_match").scope_match
     authenticate = sdk._authenticate
     register = sdk.register_pre_dispatch_hook
-    if not all(callable(value) for value in (projector, authenticate, register)):
+    if not all(callable(value) for value in (projector, scope_match, authenticate, register)):
         raise RuntimeError("SDK host authentication/projection/hook contract is unavailable")
     authorized = object()
     operations = SdkOperations(worker_origin, authorize=lambda _operation, context: context is authorized)
@@ -136,10 +137,11 @@ def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projec
             digest = _digest(params)
         except (InvalidParams, TypeError, ValueError, UnicodeError, RecursionError):
             return
-        # The real gate calls this hook only after its effective scope decision
-        # (static key OR a live server-side task grant), independent Tier2 HMAC,
-        # and policy checks. Record that admitted scope; a request cannot supply
-        # this private frame or replace it with a context/owner/grant assertion.
+        # The real gate calls this hook only after its scope decision,
+        # independent Tier2 HMAC, and policy checks. Record that admitted scope;
+        # a request cannot supply this private frame. The target additionally
+        # requires the authenticated key's scope: task context alone has no
+        # verified caller-to-task binding in the inspected SDK grant path.
         frame.capability, frame.admitted_scope = capability, REQUIRED_SCOPES[operation]
         frame.params, frame.armed_at = digest, time.monotonic()
 
@@ -190,11 +192,17 @@ def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projec
             return error(status, "denied" if status in (401, 403) else "unavailable", "SDK key authentication was refused")
         except Exception:
             return error(503, "unavailable", "SDK key authentication could not be verified")
-        # Rechecking static scopes here would discard a legitimate task grant
-        # already verified by the gate. Effective scope is established only by
-        # the bound one-use admission above; key activity and owner are fresh.
-        if not isinstance(info, dict) or info.get("active") is not True or info.get("owner") != owner:
-            return error(403, "denied", "The verified active SDK owner is required")
+        # Fail closed on task-context-only grants. The inspected SDK resolver
+        # accepts actor/task identifiers from request context; an authenticated
+        # caller-to-task binding has not been established. No identifier equality
+        # or context assertion can replace the actual key's named scope.
+        if (
+            not isinstance(info, dict)
+            or info.get("active") is not True
+            or info.get("owner") != owner
+            or not scope_match(info.get("scopes", []), REQUIRED_SCOPES[operation])
+        ):
+            return error(403, "denied", "The verified active SDK owner and named key scope are required")
         result = await asyncio.to_thread(operations.invoke, operation, params, context=authorized)
         return JSONResponse(result.body, status_code=result.status_code)
 

@@ -57,9 +57,9 @@ plane's private reads. Required scopes are limited to the relevant control plane
 | `echo.adk.*` — health, agents and runs | `adk.manage` |
 | `echo.echobots.*` — bots and groups | `echobots.manage` |
 
-The caller needs the applicable scope through an actual key grant or an active,
-unexpired task grant that the SDK gate verifies. A broad static `tier:2` grant is
-not required by this adapter. The SDK independently requires HMAC for
+The caller's authenticated key must cover the applicable named scope through the
+SDK's real scope matcher. A broad static `tier:2` grant is not required by this
+adapter. The SDK independently requires HMAC for
 `danger_tier >= 2`; these named scopes do not lower that risk classification.
 Creation and execution controls remain outside automatic tier 0/1 child-worker
 approval, and the child runner still requires an exact capability allowlist,
@@ -77,10 +77,17 @@ invocation revokes unused proofs in `finally`, including a copy inherited by a
 background task. Nested and concurrent invocations keep separate frames.
 
 The target then calls the real SDK `_authenticate` helper again and checks the
-exact configured owner and active key state. It uses the bound post-gate proof
-for effective scope admission, so a valid SDK task grant is not discarded just
-because that scope is absent from the key's permanent scope list. The adapter
-does not create grants or reinterpret claimed permissions in a request.
+exact configured owner, active key state, and the actual key's coverage of the
+fixed named scope. Both the single-use post-gate proof and that authenticated
+scope are required. The adapter does not create grants or reinterpret claimed
+permissions in a request.
+
+Task-context-only grants are currently refused, even when the SDK pre-dispatch
+hook ran. This adapter has no verified contract for binding a task's authority
+to the authenticated caller. Context identifiers, a matching grant record, or
+an asserted owner equality cannot replace the key's named scope. Supporting
+task grants requires that binding contract from the SDK owner and additional
+authorization checks; this package does not invent such a contract.
 `X-Commander-Email`, `X-Echo-Capability`, an owner API key on a direct target call,
 or a model-supplied `owner`/`scopes` field cannot substitute for gate admission.
 Credentials and authorization context are never application parameters.
@@ -161,8 +168,8 @@ strict fields, typed budget/lifecycle errors, event receipts, redaction, bounded
 responses, refusal of redirects, and false-success responses.
 
 `tests/test_sdk_host.py` runs real FastAPI/httpx ASGI transport around the actual
-native HTTP server. It checks dedicated static scopes, source-backed effective
-task-grant admission, revoked/expired/mismatched grant refusal, independent HMAC
+native HTTP server. It checks dedicated key scopes, task-context-only grant
+refusal after gate admission, revoked/expired/mismatched grant refusal, independent HMAC
 refusal before hooks, direct-call and owner/key/scope rejection,
 parameter/key/capability binding, one-use proofs, expiry, later-hook refusal,
 inherited-context revocation, nested/concurrent isolation and the factory import

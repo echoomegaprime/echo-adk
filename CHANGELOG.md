@@ -28,8 +28,8 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
 ### Fixed
 
 - SDK management operations use fixed `adk.manage` or `echobots.manage` scopes while retaining
-  Tier 2 HMAC admission. The adapter honors genuine gate-verified task grants instead of requiring
-  the same scope on a permanent key; exact owner, active key and single-use admission checks remain.
+  Tier 2 HMAC admission. The adapter requires that named scope on the verified active owner's key
+  and a single-use gate admission; task-context-only grants cannot replace verified key authority.
 - Insufficient daily allowance returns 429 before admitting new work; simultaneous admissions cannot
   reserve the same funds. Deleting bot state preserves aggregate service spend and uncertainty.
 - Queued bot leases begin at dispatch using the immutable admitted template; waiting while paused no

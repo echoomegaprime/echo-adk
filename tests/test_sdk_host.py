@@ -167,6 +167,7 @@ def create_host(native):
         worker_origin=native.origin,
         sdk=helpers,
         projector=project,
+        scope_match=lambda scopes, required: required in scopes,
     )
     return app, helpers
 
@@ -184,7 +185,7 @@ def invoke(app, operation, params, *, key="owner-key", **flags):
 def test_proposed_manifest_is_complete_tier_two_and_uses_real_flat_host_contract():
     manifest = proposed_manifest("http://127.0.0.1:8000")
     committed = Path(__file__).resolve().parents[1] / "echo_adk" / "sdk" / "capabilities.proposed.json"
-    assert json.loads(committed.read_text()) == manifest
+    assert json.loads(committed.read_text(encoding="utf-8")) == manifest
     assert manifest["registration_status"] == "proposed_not_registered"
     caps = manifest["capabilities"]
     assert len(caps) == len(OPERATIONS) == 23
@@ -219,14 +220,14 @@ def task_grant(helpers, scope="adk.manage", **changes):
     return {"session_actor_id": "approved-worker", "task_id": "approved-task"}
 
 
-def test_legitimate_gate_task_grant_does_not_require_a_permanent_key_scope(adapter):
+def test_task_context_grant_cannot_replace_authenticated_key_scope(adapter):
     app, helpers = create_host(adapter[0])
     context = task_grant(helpers)
     response = invoke(app, "agent.create", definition(), key="task-key", context=context)
-    assert response.status_code == 201 and response.json()["ok"] is True
+    assert response.status_code == 403 and response.json()["error"] == "denied"
     assert helpers.key_scopes("task-key") == ["tier:1"]
     assert helpers.hook_calls == 1 and helpers.auth_calls == ["task-key"]
-    assert "sdk-worker" in adapter[2].agents
+    assert "sdk-worker" not in adapter[2].agents
 
 
 @pytest.mark.parametrize(
@@ -249,7 +250,9 @@ def test_task_grant_cannot_cross_namespace_or_owner(adapter):
     assert refused.status_code == 403 and helpers.hook_calls == 0
     wrong_owner = invoke(app, "bot.list", {}, key="other-task-key", context=context)
     assert wrong_owner.status_code == 403 and wrong_owner.json()["error"] == "denied"
-    accepted = invoke(app, "bot.list", {}, key="task-key", context=context)
+    task_only = invoke(app, "bot.list", {}, key="task-key", context=context)
+    assert task_only.status_code == 403 and task_only.json()["error"] == "denied"
+    accepted = invoke(app, "bot.list", {}, key="bots-key", context=context)
     assert accepted.status_code == 200 and accepted.json()["ok"] is True
     assert "sdk-worker" not in adapter[2].agents
 
@@ -294,11 +297,10 @@ def test_global_tier_label_alone_does_not_cover_named_management_scope(adapter):
 
 
 @pytest.mark.parametrize(("decision", "status"), [("missing", 423), ("invalid", 401)])
-def test_valid_task_scope_does_not_bypass_independent_gate_hmac_refusal(adapter, decision, status):
+def test_named_key_scope_does_not_bypass_independent_gate_hmac_refusal(adapter, decision, status):
     app, helpers = create_host(adapter[0])
-    context = task_grant(helpers)
     helpers.hmac_decision = decision
-    response = invoke(app, "agent.create", definition(), key="task-key", context=context)
+    response = invoke(app, "agent.create", definition(), key="adk-key")
     assert response.status_code == status and response.json()["error"] == "hmac_" + decision
     assert helpers.hook_calls == 0 and not helpers.auth_calls
     assert "sdk-worker" not in adapter[2].agents
@@ -458,6 +460,7 @@ def test_factory_mounts_the_existing_sdk_main_app_using_actual_helper_import_con
     monkeypatch.setitem(sys.modules, "routers", routers)
     monkeypatch.setitem(sys.modules, "routers.sdk_invoke", sdk)
     monkeypatch.setitem(sys.modules, "routers._dispatcher_projection", SimpleNamespace(project_envelope=project))
+    monkeypatch.setitem(sys.modules, "routers._scope_match", SimpleNamespace(scope_match=lambda scopes, needed: needed in scopes))
     monkeypatch.setenv("ECHO_ADK_OWNER", "owner@example.test")
     monkeypatch.setenv("ECHO_ADK_WORKER_ORIGIN", adapter[0].origin)
     assert create_app() is app and app.state.echo_adk_sdk_installed is True

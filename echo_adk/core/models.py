@@ -28,6 +28,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Optional, Protocol
 
+from .deadline import io_timeout
 from .log import get_logger
 from .redact import is_secret_field, redact
 from .types import MODEL_ID, ValidationError
@@ -215,7 +216,7 @@ class LoopbackModel:
         request.add_header("Content-Type", "application/json")
         request.add_header("Accept", "application/json")
         try:
-            with self._open(request, timeout=self.timeout_s) as response:
+            with self._open(request, timeout=io_timeout(self.timeout_s)) as response:
                 status = getattr(response, "status", 200)
                 raw = response.read(self.max_bytes + 1)
         except urllib.error.HTTPError as exc:
@@ -535,7 +536,7 @@ class CliModel:
                     cwd=work,
                     env=child_env(),
                     input_text=prompt if spec.stdin else None,
-                    timeout_s=self.timeout_s,
+                    timeout_s=io_timeout(self.timeout_s),
                     max_bytes=MAX_CLI_OUTPUT_BYTES,
                 )
             except SpawnFailed:

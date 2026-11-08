@@ -27,6 +27,9 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
 
 ### Fixed
 
+- Wall budgets are rechecked after model, SDK, catalog, and durable final writes. Late results preserve
+  actual spend and completed receipts but return `budget_exceeded` with a `FAIL` proof. Built-in I/O waits
+  narrow to the remaining allowance without mutating shared transports; unknown costs remain reserved.
 - SDK management operations use fixed `adk.manage` or `echobots.manage` scopes while retaining
   Tier 2 HMAC admission. The adapter requires that named scope on the verified active owner's key
   and a single-use gate admission; task-context-only grants cannot replace verified key authority.

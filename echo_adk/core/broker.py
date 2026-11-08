@@ -25,6 +25,7 @@ import urllib.request
 from collections.abc import Callable, Mapping
 from typing import Any, Optional, Protocol
 
+from .deadline import io_timeout
 from .log import get_logger
 from .policy import CapabilityRegistry, validate_params
 from .redact import redact_value
@@ -232,6 +233,7 @@ class GateBroker:
         started = time.monotonic()
         status, raw, audit_id = 0, b"", None
         try:
+            wait_s = io_timeout(wait_s)
             with self._open(request, timeout=wait_s) as response:
                 status = int(getattr(response, "status", 200))
                 raw = response.read(self.max_bytes + 1)
@@ -325,7 +327,12 @@ class GateBroker:
             if cap is None:
                 raise BrokerError("invalid", f"capability {capability} is not in the pinned registry", provider=GATE_PROVIDER)
             return cap
-        with self._catalog_lock:
+        try:
+            if not self._catalog_lock.acquire(timeout=io_timeout(self.timeout_s)):
+                raise TimeoutError("catalog lock deadline expired")
+        except TimeoutError:
+            raise BrokerError("unavailable", "SDK catalog wait timed out before dispatch", provider=GATE_PROVIDER) from None
+        try:
             previous = self._catalog.get(capability)
             if previous and previous[0] > time.monotonic():
                 return previous[1]
@@ -375,6 +382,8 @@ class GateBroker:
             self._catalog[capability] = (time.monotonic() + 60.0, cap)
             self.registry.register(cap)
             return cap
+        finally:
+            self._catalog_lock.release()
 
     def invoke(
         self,

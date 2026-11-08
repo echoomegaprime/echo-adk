@@ -112,9 +112,7 @@ def create_host(native):
         if not granted:
             return JSONResponse({"ok": False, "error": "scope_forbidden", "outcome": "not_started"}, status_code=403)
         if cap["danger_tier"] >= 2 and helpers.hmac_decision != "valid":
-            return JSONResponse(
-                {"error": "hmac_" + helpers.hmac_decision}, status_code=423 if helpers.hmac_decision == "missing" else 401
-            )
+            return JSONResponse({"error": "hmac_" + helpers.hmac_decision}, status_code=423 if helpers.hmac_decision == "missing" else 401)
         envelope = SimpleNamespace(params=data.get("params", {}))
         for hook in helpers.hooks:
             helpers.hook_calls += 1

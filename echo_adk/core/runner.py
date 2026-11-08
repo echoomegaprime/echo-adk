@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .broker import Broker, BrokerError, GateBroker
+from .deadline import limit_io
 from .ledger import Ledger, MemoryStore
 from .log import get_logger
 from .models import Model, ProviderUnavailable
@@ -261,6 +262,14 @@ class Runner:
                 data={"error": reason, "code": "budget_exceeded"},
             )
 
+        def wall_exceeded(step: int) -> bool:
+            nonlocal status, error, final_text
+            if elapsed() < effective.max_wall_s:
+                return False
+            record(budget_denied(step, f"max_wall_s {effective.max_wall_s} exceeded", "budget"))
+            status, error, final_text = STATUS_FAILED, {"code": "budget_exceeded", "message": "wall-clock budget exceeded"}, None
+            return True
+
         # Lease check before the loop (spec section 4). A missing lease is gated, not an exception.
         if lease is None or lease.expired(datetime.now(timezone.utc)):
             record(
@@ -286,12 +295,18 @@ class Runner:
                 for cap_id in missing:
                     if stop is not None and stop.is_set():
                         break
-                    self.registry.register(self.broker.resolve_capability(cap_id))
+                    if wall_exceeded(0):
+                        break
+                    with limit_io(effective.max_wall_s - elapsed()):
+                        self.registry.register(self.broker.resolve_capability(cap_id))
+                    if wall_exceeded(0):
+                        break
                 system = system_prompt(agent, policy.allowed_capabilities())
             except BrokerError as exc:
                 error = {"code": exc.code, "message": str(exc), "provider": "echo-gate"}
                 record(Envelope(run_id=rid, step=0, kind="cap", verdict=ALLOWED, ok=False, data={**error, "operation": "catalog"}))
                 status = STATUS_FAILED
+                wall_exceeded(0)
         if status == STATUS_RUNNING and agent.skills:
             if self.skill_library is None:
                 skill_context = {"provider": "unconfigured", "declared": list(agent.skills), "applied": []}
@@ -375,9 +390,7 @@ class Runner:
                 status = STATUS_DONE
                 step -= 1
                 break
-            if elapsed() > effective.max_wall_s:
-                record(budget_denied(step, f"max_wall_s {effective.max_wall_s} exceeded", "budget"))
-                status, error = STATUS_FAILED, {"code": "budget_exceeded", "message": "wall-clock budget exceeded"}
+            if wall_exceeded(step):
                 break
             if calls + 1 > effective.max_calls:
                 record(budget_denied(step, f"max_calls {effective.max_calls} reached", "budget"))
@@ -407,7 +420,8 @@ class Runner:
             # --- model step
             m0 = self._clock()
             try:
-                reply = self.model.complete(system, messages)
+                with limit_io(effective.max_wall_s - elapsed()):
+                    reply = self.model.complete(system, messages)
             except ProviderUnavailable as exc:
                 calls += 1
                 record(
@@ -423,6 +437,7 @@ class Runner:
                 )
                 status = STATUS_FAILED
                 error = {"code": "unavailable", "message": redact(str(exc))[0], "provider": exc.provider}
+                wall_exceeded(step)
                 break
             except ValidationError as exc:
                 record(
@@ -482,6 +497,11 @@ class Runner:
                     },
                 )
             )
+            # Preserve completed I/O and its actual cost before refusing its
+            # proposed action. A late response must not dispatch another call
+            # or become a successful final, even for a custom synchronous model.
+            if wall_exceeded(step):
+                break
             if cost > effective.max_cost_usd + 1e-9:
                 record(budget_denied(step, f"max_cost_usd {effective.max_cost_usd} exceeded", "budget"))
                 status, error = STATUS_FAILED, {"code": "budget_exceeded", "message": "cost budget exceeded"}
@@ -505,6 +525,9 @@ class Runner:
                     )
                 )
                 status, error = STATUS_FAILED, {"code": "denied", "message": f"malformed model action: {exc}"}
+                break
+
+            if wall_exceeded(step):
                 break
 
             if action.action == "final":
@@ -534,6 +557,21 @@ class Runner:
                             )
                         )
                         status, final_text = STATUS_FAILED, None
+                        break
+                    if elapsed() >= effective.max_wall_s:
+                        # The append already happened. Retain its receipt, but
+                        # do not misrepresent this late write as a final answer.
+                        record(
+                            Envelope(
+                                run_id=rid,
+                                step=step,
+                                kind="memory",
+                                verdict=ALLOWED,
+                                ok=True,
+                                data={"operation": "write", "memory_receipt": final_data["memory_receipt"]},
+                            )
+                        )
+                        wall_exceeded(step)
                         break
                 record(Envelope(run_id=rid, step=step, kind="final", verdict=ALLOWED, ok=True, data=final_data))
                 status = STATUS_DONE
@@ -570,8 +608,11 @@ class Runner:
                 break
 
             # --- execute through the broker (lease consumed inside)
+            if wall_exceeded(step):
+                break
             try:
-                env = self.broker.invoke(cap_id, action.params, lease, run_id=rid, step=step, tier=tier, context=context)
+                with limit_io(effective.max_wall_s - elapsed()):
+                    env = self.broker.invoke(cap_id, action.params, lease, run_id=rid, step=step, tier=tier, context=context)
             except BrokerError as exc:
                 calls += 1
                 record(
@@ -590,9 +631,12 @@ class Runner:
                 error = {"code": exc.code if exc.code in ("unavailable", "invalid") else "unavailable", "message": str(exc)}
                 if exc.provider:
                     error["provider"] = exc.provider
+                wall_exceeded(step)
                 break
             calls += 1
             record(env)
+            if wall_exceeded(step):
+                break
             if env.verdict != ALLOWED:
                 status = STATUS_GATED if env.verdict == GATED else STATUS_FAILED
                 if status == STATUS_FAILED:
@@ -619,11 +663,23 @@ class Runner:
 
         if status == STATUS_RUNNING:
             status = STATUS_DONE
+        if status == STATUS_DONE:
+            wall_exceeded(step)
         verdict = _verdict(status, final_text is not None, error)
         lease_id = lease.lease_id if lease is not None else "0" * 32
         proof = Proof.from_envelopes(rid, lease_id, steps, verdict)
         if self.ledger is not None:
             self.ledger.write_proof(proof)
+        final_spent = spent()
+        if verdict == "PASS" and final_spent.wall_s >= effective.max_wall_s:
+            # Proof persistence itself can block. Correct the persisted verdict
+            # before publishing a successful result; append, never replay work.
+            wall_exceeded(step)
+            verdict = "FAIL"
+            proof = Proof.from_envelopes(rid, lease_id, steps, verdict)
+            if self.ledger is not None:
+                self.ledger.write_proof(proof)
+            final_spent = spent()
         result = RunResult(
             run_id=rid,
             agent=agent.name,
@@ -632,7 +688,7 @@ class Runner:
             proof=proof,
             error=error,
             budget=effective,
-            spent=spent(),
+            spent=final_spent,
             started_at=started_at,
             finished_at=now_iso(),
             final_text=final_text,

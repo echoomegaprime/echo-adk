@@ -108,6 +108,16 @@ lease check -> [ model step -> one JSON Action -> policy -> broker -> Envelope -
   `PASS` (final within budget), `FAIL` (denied / provider unavailable / budget), `UNKNOWN` (gated, stopped,
   out of steps). The ledger is append-only JSONL under the state dir.
 
+The runner checks wall time before dispatch and after synchronous model, SDK, and durable final writes.
+A result arriving after `max_wall_s` fails with `budget_exceeded`; it cannot become a successful final or
+start another capability call. Completed receipts and costs remain recorded, and `spent.wall_s` reports
+actual elapsed time. Unknown in-flight model costs retain their conservative budget reservation.
+
+Built-in HTTP and CLI waits use the smaller of their configured timeout and the run's remaining wall
+allowance. This is cooperative cancellation: a custom synchronous provider may ignore that limit, and
+remote work already dispatched may continue after a local socket timeout. Late results are refused;
+the runner does not automatically replay work or change providers.
+
 ## Models (R1, R2)
 
 | Lane model id | Path | Credentials |

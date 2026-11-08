@@ -186,8 +186,8 @@ def test_proposed_manifest_is_complete_tier_two_and_uses_real_flat_host_contract
     assert json.loads(committed.read_text(encoding="utf-8")) == manifest
     assert manifest["registration_status"] == "proposed_not_registered"
     caps = manifest["capabilities"]
-    assert len(caps) == len(OPERATIONS) == 53
-    assert len({cap["id"] for cap in caps}) == 53
+    assert len(caps) == len(OPERATIONS) == 56
+    assert len({cap["id"] for cap in caps}) == 56
     assert all(cap["danger_tier"] == 2 for cap in caps)
     assert all(cap["required_scope"] == ("echobots.manage" if cap["id"].startswith("echo.echobots.") else "adk.manage") for cap in caps)
     assert all(cap["handler_kind"] == "router" and cap["target_method"] == "POST" for cap in caps)

@@ -198,7 +198,7 @@ def test_no_remote_destination_credentials_or_path_override(origin):
 
 def test_catalog_is_complete_closed_and_detached_from_internal_schemas():
     catalog = operation_catalog()
-    assert len(catalog) == 53
+    assert len(catalog) == 56
     assert all(row["input_schema_json"]["additionalProperties"] is False for row in catalog)
     assert all(
         "command" not in row["input_schema_json"]["properties"] and "options" not in row["input_schema_json"]["properties"]

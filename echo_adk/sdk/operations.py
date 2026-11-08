@@ -488,7 +488,14 @@ class SdkOperations:
     supplies this callback from the real SDK auth integration.
     """
 
-    def __init__(self, worker_origin: str, *, authorize: Callable[[Operation, Any], bool], timeout_s: float = 30) -> None:
+    def __init__(
+        self,
+        worker_origin: str,
+        *,
+        authorize: Callable[[Operation, Any], bool],
+        timeout_s: float = 30,
+        continuity_timeout_s: float = 55,
+    ) -> None:
         parsed = urllib.parse.urlsplit(worker_origin)
         try:
             port = parsed.port
@@ -510,9 +517,16 @@ class SdkOperations:
             raise ValueError("a trusted host authorizer is required")
         if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)) or not 0 < timeout_s <= 30:
             raise ValueError("timeout must be greater than zero and at most 30 seconds")
+        if (
+            isinstance(continuity_timeout_s, bool)
+            or not isinstance(continuity_timeout_s, (int, float))
+            or not 0 < continuity_timeout_s <= 55
+        ):
+            raise ValueError("continuity timeout must be greater than zero and at most 55 seconds")
         self.origin = worker_origin.rstrip("/")
         self.authorize = authorize
         self.timeout_s = timeout_s
+        self.continuity_timeout_s = continuity_timeout_s
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
 
     def invoke(self, operation: str, params: Any, *, context: Any) -> OperationResult:
@@ -539,7 +553,10 @@ class SdkOperations:
         )
         try:
             try:
-                response = self._opener.open(request, timeout=self.timeout_s)
+                timeout = (
+                    self.continuity_timeout_s if operation in ("bot.continuity.capture", "bot.continuity.reconcile") else self.timeout_s
+                )
+                response = self._opener.open(request, timeout=timeout)
             except urllib.error.HTTPError as exc:
                 response = exc
             with response:

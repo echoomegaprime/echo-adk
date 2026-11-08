@@ -5,8 +5,9 @@ with Google ADK, MCP and A2A adapters.
 
 One small, zero-dependency way to *define* an Echo agent and run it with exact-scope leases, capability
 policy, local execution proofs, and scoped local memory. The same definition can be loaded by the core
-runner and its Google ADK, MCP, and Agent2Agent adapters. Live broker/model certification, Crystal/ECF
-memory, and artifact-service integration remain separate delivery gates in `docs/SLICES.md`.
+runner and its Google ADK, MCP, and Agent2Agent adapters. An optional explicit ECF summary outbox uses
+the existing gate and fixed host project bindings. Live permissions, canonical write acknowledgments,
+broker/model certification and artifact-service integration remain separate delivery gates in `docs/SLICES.md`.
 
 - Core: Python >= 3.10, **standard library only**. FORGE runs 3.12.3.
 - Optional extra `echo-adk[adk]` brings `google-adk` (needs Python >= 3.11) for the ADK adapter.
@@ -159,7 +160,10 @@ Local memory recall is bounded, redacted, and treated as untrusted history. Succ
 include a durable local memory receipt. This is not a Crystal/ECF acknowledgment. Optional browser
 process/profile isolation, per-bot OAuth connections, app-event watches, editable notes and portable
 teams are documented in [`docs/BOT_WORKSPACES.md`](docs/BOT_WORKSPACES.md). Browser and provider
-availability reflects actual host configuration and consent; no per-bot OS sandbox is claimed. Implementations
+availability reflects actual host configuration and consent; no per-bot OS sandbox is claimed.
+The separate [`ECF summary outbox`](docs/BOT_CONTINUITY.md) validates actual persistence receipts and
+exact readback for explicitly requested notes; it never silently captures the local transcript.
+Implementations
 are in `echo_adk/api/{server,service,store,budgets}.py`, `echo_adk/bots/{manager,schedules,triggers}.py`, and
 `echo_adk/core/{runner,ledger}.py`.
 
@@ -180,7 +184,7 @@ its existing secret store; ADK does not retrieve credential tables, mint keys, g
 TOTP/approval challenges. A missing signer is reported as unavailable.
 
 [`echo_adk/sdk/README.md`](echo_adk/sdk/README.md) describes the concrete inbound SDK host adapter for
-all 53 v2 management/resource operations, strict schemas, single-use gate admission, and proposed registrations.
+all 56 v2 management/resource operations, strict schemas, single-use gate admission, and proposed registrations.
 OAuth callback code/state use a dedicated owner protocol endpoint and are excluded from the general SDK gate.
 The registration manifest is reviewable source data. Installing this package does not register or
 activate it in a live SDK catalog. Existing legacy `echo.bot.*` notification capabilities are separate.
@@ -231,7 +235,7 @@ budget admission, and memory recall. Focused coverage lives in `tests/test_contr
 `tests/test_budget_reservations.py`, `tests/test_bot_automation.py`, `tests/test_bot_schedules.py`,
 `tests/test_store_inbox.py`, and `tests/test_memory_recall.py`.
 
-The live gate/model path, Crystal/ECF and artifact services, OS/container isolation, evaluation harness,
+The live gate/model path, configured ECF write acceptance and artifact services, OS/container isolation, evaluation harness,
 FORGE deployment certification, and rollback drill remain separate work in [`docs/SLICES.md`](docs/SLICES.md).
 Before downgrading, settle held reservations and use a consistent backup or reviewed state migration;
 older binaries do not maintain the new accounting/inbox projections or discover new memory filenames.

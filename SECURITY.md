@@ -33,6 +33,10 @@ Additional posture:
 - Team imports validate definitions before writes, start bots paused with empty leases, and exclude
   credentials, sessions and running work. Interrupted imports have reviewable resource hashes and
   conservative recovery; changed or newly attached resources are not silently deleted.
+- Explicit ECF summaries use an owner/bot-bound durable outbox, host-fixed existing project IDs and
+  exact capture/recall leases through the actual gate. Unknown write outcomes retain the original
+  request identity; only explicit reconciliation may retry it. A persistence receipt is distinct from
+  exact readback and factual verification. Shared canonical ECF is not a private tenant for each bot.
 - Cost: per-run budget clamped to the lane and the service caps (120 calls, 5 USD, 4800 s), per-bot `daily_cost_cap_usd <= 5` (turn refused with `budget_exceeded`), service-wide daily cap `ECHO_ADK_DAILY_CAP_USD` (default 200 USD).
 - Headless everywhere. Structured JSON logs on stderr; `ECHO_ADK_DEBUG=1` adds debug records (never credentials).
 

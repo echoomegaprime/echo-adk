@@ -32,7 +32,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -e ".[dev]"
+      - run: python -m pip install -e ".[dev,sdk-host,calendar,connections]"
       - run: python -c "import echo_adk, sys; assert not [m for m in sys.modules if m.startswith('google')]; print('core is zero-dependency')"
       - run: python -m pytest -q
         env:

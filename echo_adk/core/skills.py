@@ -10,15 +10,19 @@ L3 references (:meth:`LoadedSkill.reference`).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from .redact import redact_value
 from .types import AGENT_NAME, Skill, ValidationError
 
 MAX_SKILL_BYTES = 256 * 1024
 MAX_REFERENCE_BYTES = 512 * 1024
+MAX_SKILL_CONTEXT_CHARS = 64000
 _FRONTMATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
@@ -168,6 +172,47 @@ def load_skill(directory: str | Path) -> LoadedSkill:
     meta = load_skill_meta(directory)
     _, body = parse_frontmatter((meta.directory / "SKILL.md").read_text(encoding="utf-8", errors="replace"))
     return LoadedSkill(meta, body.strip())
+
+
+class SkillLibrary:
+    """Named installed skills under one host-configured root, never model paths.
+
+    Loading guidance does not execute bundled scripts, add tools, or grant new
+    capability scopes. The caller includes the returned content below its own
+    policy and records the digest of exactly the redacted guidance supplied.
+    """
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root).resolve()
+        if not self.root.is_dir():
+            raise SkillValidationError("Configured skill library is not a directory")
+
+    def context(self, names: list[str] | tuple[str, ...]) -> tuple[str, dict[str, Any]]:
+        if not isinstance(names, (list, tuple)) or not all(isinstance(name, str) for name in names):
+            raise SkillValidationError("Installed skills must be a list of names")
+        unique = list(dict.fromkeys(names))
+        if len(unique) > 32:
+            raise SkillValidationError("At most 32 installed skills may be selected")
+        rows = []
+        for name in unique:
+            if not isinstance(name, str) or len(name) > 64 or not AGENT_NAME.fullmatch(name):
+                raise SkillValidationError("Skill names must be lowercase kebab-case")
+            directory = (self.root / name).resolve()
+            skill_path = (directory / "SKILL.md").resolve()
+            if self.root not in directory.parents or self.root not in skill_path.parents:
+                raise SkillValidationError("Skill path leaves the configured library")
+            try:
+                skill = load_skill(directory)
+            except OSError:
+                raise SkillValidationError(f"Installed skill {name!r} could not be read") from None
+            if skill.name != name:
+                raise SkillValidationError("Skill identity changed while resolving its installed name")
+            row, _ = redact_value({"name": name, "description": skill.meta.description, "body": skill.body})
+            rows.append(row)
+        text = json.dumps(rows, ensure_ascii=False, sort_keys=True)
+        if len(text) > MAX_SKILL_CONTEXT_CHARS:
+            raise SkillValidationError("Selected skill guidance exceeds the 64000-character context bound")
+        return text, {"provider": "installed", "applied": unique, "sha256": hashlib.sha256(text.encode()).hexdigest()}
 
 
 def scan_skills(root: str | Path) -> tuple[list[SkillMeta], list[dict[str, str]]]:

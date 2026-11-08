@@ -15,7 +15,7 @@ import time
 from typing import Any, Optional, TextIO
 
 from .. import __version__
-from ..core.broker import Broker, BrokerError
+from ..core.broker import Broker, BrokerError, GateBroker
 from ..core.ledger import Ledger
 from ..core.log import get_logger
 from ..core.policy import ALLOWED, CapabilityRegistry, Policy
@@ -52,12 +52,18 @@ class McpServer:
         clock=time.monotonic,
     ) -> None:
         self.agent = agent
-        self.registry = registry or CapabilityRegistry.builtin()
+        self.registry = (
+            registry if registry is not None else broker.registry if isinstance(broker, GateBroker) else CapabilityRegistry.builtin()
+        )
+        if isinstance(broker, GateBroker):
+            broker.registry = self.registry
         self.policy = Policy(self.registry, agent.capabilities, agent.lane.budget)
         self.run_id = run_id or (lease.run_id if lease else new_id())
         budget = agent.lane.budget
         self.lease = lease or Lease.mint(self.run_id, agent.capabilities, ttl_s=budget.max_wall_s, max_uses=budget.max_calls)
         self.broker = broker
+        if isinstance(broker, GateBroker) and not self.lease.expired() and not self.lease.exhausted():
+            broker.hydrate(tuple(cap_id for cap_id in agent.capabilities if self.lease.permits(cap_id)))
         self.ledger = ledger
         self._clock = clock
         self._t0 = clock()

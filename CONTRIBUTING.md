@@ -9,7 +9,9 @@
    decision recorded in `docs/SLICES.md`, not a code review.
 4. **The HTTP contract is frozen** (`docs/CONTRACT.md`). Echo Prime builds against it. Any change is a
    new contract version negotiated with the Prime side; `tests/test_contract.py` must keep passing.
-5. **Headless and structured.** No browser, no popups, logs are JSON on stderr, debug behind
+5. **Headless and structured.** No interactive popups. The explicitly requested optional per-bot
+   headless browser is governed by `SECURITY.md` and `echo_adk/browser/README.md`.
+   Logs are JSON on stderr, debug behind
    `ECHO_ADK_DEBUG=1`. Never log a credential, a request header or a raw body.
 
 ## Workflow

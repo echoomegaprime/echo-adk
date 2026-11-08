@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "apps": {
+    "certification-forge": {"enabled": true}
+  }
+}

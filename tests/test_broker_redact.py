@@ -15,6 +15,51 @@ from tests.fakes import FakeHttpServer, fake_gate_responder
 KEY = "sk-live-TESTKEY0123456789abcdefghijklmnop"
 
 
+@pytest.mark.parametrize("encoded_body", [False, True])
+@pytest.mark.parametrize("signed", [False, True])
+def test_gate_scrubs_decoded_credentials_in_values_and_object_keys(monkeypatch, encoded_body, signed):
+    key, secret = "synthetic-test-key", "ab" * 32
+    monkeypatch.setenv("ECHO_ADK_GATE_KEY", key)
+    monkeypatch.setenv("ECHO_ADK_GATE_HMAC_SECRET", secret)
+    target = json.dumps({"ok": True, "note": key, "nested": [{"trace": secret, key: "key-named field", secret: "signer-named field"}]})
+    # Equivalent JSON escapes must not evade redaction after either decoding
+    # layer. These values deliberately lack the generic token-prefix patterns.
+    for sensitive in (key, secret):
+        target = target.replace(sensitive, "".join(f"\\u{ord(char):04x}" for char in sensitive))
+    body = json.dumps(target) if encoded_body else target
+    raw = ('{"status":"ok","result":{"status_code":200,"body":' + body + "}}").encode()
+
+    class Response(io.BytesIO):
+        status = 200
+        headers = {"X-Echo-Audit-Id": "reflected-" + key}
+
+    broker = GateBroker(opener=lambda *_args, **_kwargs: Response(raw), verify_catalog=False)
+    ok, data, audit_id, _, count = broker._request("echo.fixture.read", {"command": "read"}, {}, sign=signed)
+    assert ok and audit_id is None and count >= 5
+    assert key not in json.dumps(data) and secret not in json.dumps(data)
+    assert data["result"]["body"]["note"] == "[REDACTED]"
+    assert data["result"]["body"]["nested"][0]["trace"] == "[REDACTED]"
+
+
+def test_gate_credential_scrubbing_bounds_deep_untrusted_data(monkeypatch):
+    key = "synthetic-opaque-credential"
+    monkeypatch.setenv("ECHO_ADK_GATE_KEY", key)
+    value = {"note": key}
+    for _ in range(80):
+        value = {"nested": value}
+    raw = json.dumps({"status": "ok", "result": {"status_code": 200, "body": {"ok": True, "value": value}}}).encode()
+
+    class Response(io.BytesIO):
+        status = 200
+        headers = {}
+
+    broker = GateBroker(opener=lambda *_args, **_kwargs: Response(raw), verify_catalog=False)
+    ok, data, _, _, count = broker._request("echo.fixture.read", {"command": "read"}, {})
+    assert ok and count >= 1
+    output = json.dumps(data)
+    assert key not in output and output.count('"nested"') <= 64 and "[REDACTED]" in output
+
+
 def test_redact_patterns_and_count():
     text = (
         "api_key=abc123 Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig "
@@ -63,11 +108,11 @@ def test_broker_sends_key_header_from_env_and_redacts_response(monkeypatch):
         assert sent["body"] == {
             "envelope_version": 1,
             "capability": "echo.caps.search",
-            "params": {"q": "knowledge"},
+            "params": {"command": "search", "q": "knowledge"},
             "context": {"run_id": run_id, "step": 1, "source": "echo-adk"},
         }
         assert env.ok and env.verdict == "allowed" and env.untrusted is True and env.audit_id == "hdr-audit"
-        assert env.data["data"]["api_key"] == "[REDACTED]" and env.redacted >= 1
+        assert env.data["result"]["body"]["data"]["api_key"] == "[REDACTED]" and env.redacted >= 1
         assert lease.uses == 1
         serialised = json.dumps(env.to_dict())
         assert KEY not in serialised
@@ -122,7 +167,7 @@ def test_gate_error_status_is_not_ok_but_still_enveloped(monkeypatch):
     monkeypatch.setenv("ECHO_ADK_GATE_KEY", KEY)
     with FakeHttpServer() as gate:
         gate.state["status"], gate.state["payload"] = 403, {"ok": False, "error": "scope_forbidden", "token": "leak"}
-        broker = GateBroker(gate.url, timeout_s=5)
+        broker = GateBroker(gate.url, timeout_s=5, verify_catalog=False)
         run_id = new_id()
         lease = Lease.mint(run_id, ["echo.caps.list"], ttl_s=60, max_uses=2)
         env = broker.invoke("echo.caps.list", {}, lease, run_id=run_id, step=1, tier=0)

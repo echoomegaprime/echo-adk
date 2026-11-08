@@ -14,7 +14,11 @@ _KEYWORD = (
     r"(?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|[a-z0-9_-]*_key|[a-z0-9_-]*_token"
     r"|key|token|secret|password|passwd|credential|credentials|authorization|x-echo-api-key)"
 )
-_ASSIGNMENT = re.compile(r"(\b" + _KEYWORD + r"\b[\"']?\s*[=:]\s*[\"']?)([^\s\"',;}\]]+)", re.IGNORECASE)
+_ASSIGNMENT = re.compile(
+    r"(\b" + _KEYWORD + r"\b(?:\\*[\"'])?\s*[=:]\s*(?:\\*[\"'])?)"
+    r"(\[REDACTED\]|(?:\\(?![\"'])|[^\s\"',;}\]\\])+)",
+    re.IGNORECASE,
+)
 _BEARER = re.compile(r"\b([Bb]earer)\s+[A-Za-z0-9._~+/=-]{8,}")
 _TOKENS = re.compile(
     r"\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}"
@@ -23,7 +27,7 @@ _TOKENS = re.compile(
 _PRIVATE_KEY = re.compile(r"-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----")
 _SECRET_FIELD = re.compile(
     r"^(?:api[_-]?key|apikey|[a-z0-9_-]*token|[a-z0-9_-]*secret|password|passwd|credential|credentials|authorization"
-    r"|bearer|private[_-]?key|[a-z0-9_-]*[_-]key|key)$",
+    r"|bearer|hmac|secret_hmac|private[_-]?key|[a-z0-9_-]*[_-]key|key)$",
     re.IGNORECASE,
 )
 _AUTH_SCHEMES = ("bearer", "basic", "token", "digest")
@@ -38,7 +42,7 @@ def is_secret_field(name: str) -> bool:
 
 def _assignment(match: re.Match[str]) -> str:
     # "Authorization: Bearer <token>" keeps the scheme word; the Bearer pass redacts the token itself.
-    if match.group(2).lower() in _AUTH_SCHEMES:
+    if match.group(2).lower() in _AUTH_SCHEMES or match.group(2) == REDACTED:
         return match.group(0)
     return match.group(1) + REDACTED
 
@@ -50,8 +54,14 @@ def redact(text: str) -> tuple[str, int]:
     count = 0
     out, n = _PRIVATE_KEY.subn("[REDACTED PRIVATE KEY]", text)
     count += n
-    out, n = _ASSIGNMENT.subn(_assignment, out)
-    count += n - sum(1 for m in _ASSIGNMENT.finditer(text) if m.group(2).lower() in _AUTH_SCHEMES)
+
+    def clean_assignment(match: re.Match[str]) -> str:
+        nonlocal count
+        replacement = _assignment(match)
+        count += int(replacement != match.group(0))
+        return replacement
+
+    out = _ASSIGNMENT.sub(clean_assignment, out)
     out, n = _BEARER.subn(lambda m: m.group(1) + " " + REDACTED, out)
     count += n
     out, n = _TOKENS.subn(REDACTED, out)
@@ -70,7 +80,7 @@ def redact_value(value: Any, *, _depth: int = 0) -> tuple[Any, int]:
         out: dict[str, Any] = {}
         for key, item in value.items():
             name = str(key)
-            if is_secret_field(name) and item not in (None, "", [], {}):
+            if is_secret_field(name) and item not in (None, "", [], {}, REDACTED):
                 out[name] = REDACTED
                 total += 1
                 continue

@@ -352,6 +352,10 @@ class Capability:
         schema: dict[str, Any] = {"type": "object", "properties": properties}
         if required:
             schema["required"] = required
+        # Some catalog versions expose the canonical schema. Preserve its
+        # constraints rather than reducing it to the help router's param list.
+        if isinstance(cap.get("input_schema"), dict) and cap["input_schema"].get("type") == "object":
+            schema = dict(cap["input_schema"])
         tier = cap.get("tier")
         if not isinstance(tier, int) or isinstance(tier, bool):
             raise ValidationError(f"caps.detail for {cap['id']} has no integer tier")

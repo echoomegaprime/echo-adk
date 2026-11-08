@@ -165,11 +165,23 @@ class FakeHttpServer:
 
 
 def fake_gate_responder(record: dict[str, Any]) -> tuple[int, dict[str, Any]]:
+    from echo_adk.core.policy import CapabilityRegistry
+
     body = record["body"] or {}
+    cap_id, params = body.get("capability"), body.get("params", {})
+    registry = CapabilityRegistry.builtin()
+    result: dict[str, Any] = {"ok": True, "data": {"capability": cap_id, "echo": params, "api_key": "sk-abcdefghijklmnopqrstuvwxyz0123"}}
+    if cap_id == "echo.caps.detail":
+        cap = registry.get(params.get("id", params.get("capability", "")))
+        result.update({"cap": cap.to_dict()} if cap else {"ok": False, "error": "capability not found"})
+    if cap_id == "echo.caps.search":
+        result["caps"] = [cap.to_dict() for cap in registry.capabilities() if params.get("q", "") in cap.id]
     return 200, {
-        "ok": True,
-        "audit_id": "gate-audit-1",
-        "data": {"capability": body.get("capability"), "echo": body.get("params"), "api_key": "sk-abcdefghijklmnopqrstuvwxyz0123"},
+        "run_id": "offline-gate-run-1",
+        "status": "ok",
+        "result": {"status_code": 200, "body": result},
+        "trace": {"handler_kind": "router", "envelope_version": 1},
+        "warnings": [],
     }
 
 

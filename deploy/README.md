@@ -6,6 +6,11 @@ OpenAI-compatible model endpoint (FORGE Qwen on `127.0.0.1:11441`) for the `qwen
 
 ## Install
 
+Calendar workers require an IANA timezone database. FORGE can use its system timezone data. For
+Windows workers or minimal images without that database, install `echo-adk[calendar]` (or
+`python -m pip install -e ".[calendar]"` from the reviewed checkout) in the worker's Python environment.
+This supplies the pinned first-party `tzdata` fallback; it does not change the machine timezone.
+
 ```bash
 # as forge
 cd /home/forge
@@ -27,8 +32,10 @@ systemctl daemon-reload
 systemctl enable --now echo-adk-api
 ```
 
-Only fall back to the sovereign key (`/home/forge/.echo_sovereign_key`) for a short smoke test, and rotate to the
-scoped key before leaving the service enabled.
+Use that service-specific key for smoke tests so validation exercises the deployed scopes. Active-catalog
+verification requires the existing catalog read scope in addition to the exact operation scopes. For
+privileged callers with an admitted lease, the host secret store can provide the matching 64-hex
+`ECHO_ADK_GATE_HMAC_SECRET`; a successful signature does not add any scopes or satisfy a separate TOTP gate.
 
 The unit is hardened for the `qwen-local` lane: `IPAddressDeny=any` (loopback only) and `ProtectHome=read-only`
 mean the CLI lanes (`claude`, `codex`, `grok`, `argon`) cannot reach the network or their `$HOME` login stores
@@ -54,11 +61,52 @@ ss -tlnp 'sport = :8378'                                               # 127.0.0
 | Need | Command |
 |---|---|
 | Restart after a code pull | `sudo systemctl restart echo-adk-api` |
-| Extend the capability registry | drop `capabilities.json` (`{"capabilities":[...]}` or `{"caps":[<echo.caps.detail payloads>]}`) into `/var/lib/echo/echo-adk/` or set `ECHO_ADK_CAPS_FILE`, then restart |
+| Extend the capability registry | New requested IDs are resolved from the authenticated active SDK catalog; a host-reviewed `ECHO_ADK_CAPS_FILE` can also supply full schemas |
+| Enable installed skills | Set `ECHO_ADK_SKILLS_DIR` to the host-owned installed skill root; verify all selected agent and bot skill names resolve |
+| Expose all v2 operations through the SDK | Follow `echo_adk/sdk/README.md` to install the authenticated host adapter and review the proposed registration manifest |
 | Change the model endpoint / name | `ECHO_ADK_MODEL_ENDPOINT` (loopback only) / `ECHO_ADK_MODEL_NAME` in the unit or env file |
 | Raise/lower the service daily cap | `ECHO_ADK_DAILY_CAP_USD` (default 200) in `/etc/echo/echo-adk.env` |
 | Ledger / proofs / memory | `/var/lib/echo/echo-adk/{ledger,proofs,memory}/`, SQLite `echo-adk.sqlite3` (WAL) |
-| Rollback | `git -C /home/forge/echo-adk checkout <previous sha> && sudo systemctl restart echo-adk-api`; state is forward-compatible within 0.x |
+| Rollback | Restore the reviewed prior code and its consistent state backup using the procedure below; reverting only the executable is insufficient |
+
+### Upgrade backup and rollback
+
+The v2 worker adds durable budget reservations, spend and inbox projections, event
+receipts, and encoded memory filenames. Older code does not maintain all of that
+state. A version number within `0.x` does not establish downgrade compatibility.
+The authoritative migration requirements are in `docs/CONTRACT_V2.md`, section 8.
+
+Before an upgrade:
+
+1. Record the running commit, installed dependency versions, service definition,
+   configured state and agent directories, and the actual host. Retain protected
+   host configuration through its existing secret-store and permission controls.
+2. Stop admission from Prime and other callers, allow or explicitly stop active
+   work, and confirm that the worker service has stopped. Keep all writers stopped
+   while making the snapshot; copying individual live SQLite files is insufficient.
+3. Take one consistent backup of the **entire state directory**, including the
+   SQLite database and any WAL/journal files, memory, ledgers, and proofs. Back up
+   the agent definitions with that release. Preserve access permissions and record
+   the backup manifest and checksums outside the state being upgraded.
+4. Verify the backup can be restored into a separate directory. Prevent any restored
+   copy from dispatching tasks or reaching production providers during verification.
+   Record the verification result and the rollback commit before activation.
+
+Before a downgrade, stop new admissions again and settle or cancel every new-format
+held reservation. Reconcile work admitted after the backup, its recorded spend,
+memory, event receipts, and any external effects. Restoring a backup does not undo
+an external action or establish that repeating it is safe.
+
+Restore the matching prior code, dependencies, agent definitions, and complete
+consistent state backup, or use an explicitly reviewed migration and reconciliation.
+Do not run old and new workers against the same upgraded database. Do not blindly
+rename or merge legacy `__` memory files with newer `%3A` files: their scope identity
+and visibility differ. Preserve newer evidence separately for reconciliation.
+
+Verify the restored worker identity, state integrity, budget accounting, queued
+work, and relevant Prime behavior before reopening admissions. Keep the failed
+candidate and the rollback evidence available. This procedure documents the required
+work; it does not assert that a production rollback rehearsal has been completed.
 
 ### Command line shape
 

@@ -9,10 +9,12 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Optional
 
 from ..core.types import now_iso
+from .budgets import BudgetReservations, dollars, money_micros
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -35,6 +37,8 @@ CREATE TABLE IF NOT EXISTS messages (
     message_id TEXT PRIMARY KEY,
     bot_id TEXT NOT NULL,
     seq INTEGER NOT NULL,
+    role TEXT NOT NULL DEFAULT '',
+    state TEXT NOT NULL DEFAULT '',
     doc TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_bot_seq ON messages(bot_id, seq);
@@ -56,26 +60,55 @@ CREATE TABLE IF NOT EXISTS counters (
 """
 
 
-class Store:
+class Store(BudgetReservations):
     def __init__(self, state_dir: str | Path) -> None:
         self.root = Path(state_dir)
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "echo-adk.sqlite3"
         self._lock = threading.RLock()
+        self._savepoint_serial = 0
+        self._compact_pending = False
         self._db = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
         self._db.execute("PRAGMA journal_mode=WAL")
-        self._db.execute("PRAGMA synchronous=NORMAL")
+        # Admission commits must survive a power loss before any external billable work.
+        self._db.execute("PRAGMA synchronous=FULL")
         self._db.execute("PRAGMA secure_delete=ON")  # deleted rows are overwritten, never left in free pages
         with self._lock:
             self._db.executescript(_SCHEMA)
+            self._init_budget_ledger()
+            self._init_message_index()
 
     def close(self) -> None:
         with self._lock:
             self._db.close()
 
     # ----------------------------------------------------------------- helpers
-    def _next_seq(self) -> int:
+    @contextmanager
+    def transaction(self):
+        """Serialize a complete mutation across threads and processes; nested callers use savepoints."""
         with self._lock:
+            nested = self._db.in_transaction
+            self._savepoint_serial += 1
+            savepoint = f"store_{self._savepoint_serial}"
+            self._db.execute(f"SAVEPOINT {savepoint}" if nested else "BEGIN IMMEDIATE")
+            try:
+                yield self
+            except BaseException:
+                if nested:
+                    self._db.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+                    self._db.execute(f"RELEASE SAVEPOINT {savepoint}")
+                else:
+                    self._db.execute("ROLLBACK")
+                raise
+            else:
+                self._db.execute(f"RELEASE SAVEPOINT {savepoint}" if nested else "COMMIT")
+            finally:
+                if not nested and self._compact_pending:
+                    self._compact_pending = False
+                    self._db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    def _next_seq(self) -> int:
+        with self.transaction():
             row = self._db.execute("SELECT value FROM counters WHERE name='seq'").fetchone()
             value = (row[0] if row else 0) + 1
             self._db.execute("INSERT OR REPLACE INTO counters(name, value) VALUES ('seq', ?)", (value,))
@@ -85,9 +118,26 @@ class Store:
     def _dump(doc: dict[str, Any]) -> str:
         return json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
 
+    def _init_message_index(self) -> None:
+        """Backfill legacy inbox projections once, so old history cannot hide queued work."""
+        with self.transaction():
+            columns = {row[1] for row in self._db.execute("PRAGMA table_info(messages)")}
+            missing = {"role", "state"} - columns
+            for column in sorted(missing):
+                self._db.execute(f"ALTER TABLE messages ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+            if missing:
+                cursor = self._db.execute("SELECT message_id,doc FROM messages")
+                while rows := cursor.fetchmany(1000):
+                    projected = []
+                    for message_id, raw in rows:
+                        doc = json.loads(raw)
+                        projected.append((str(doc.get("role", "")), str(doc.get("state", "")), message_id))
+                    self._db.executemany("UPDATE messages SET role=?,state=? WHERE message_id=?", projected)
+            self._db.execute("CREATE INDEX IF NOT EXISTS messages_bot_state_seq ON messages(bot_id,state,seq)")
+
     # ----------------------------------------------------------------- runs
     def put_run(self, doc: dict[str, Any]) -> None:
-        with self._lock:
+        with self.transaction():
             existing = self._db.execute("SELECT seq FROM runs WHERE run_id=?", (doc["run_id"],)).fetchone()
             seq = existing[0] if existing else self._next_seq()
             self._db.execute(
@@ -101,7 +151,7 @@ class Store:
         return json.loads(row[0]) if row else None
 
     def update_run(self, run_id: str, **fields: Any) -> Optional[dict[str, Any]]:
-        with self._lock:
+        with self.transaction():
             doc = self.get_run(run_id)
             if doc is None:
                 return None
@@ -142,9 +192,14 @@ class Store:
             cur = self._db.execute("DELETE FROM runs WHERE bot_id=?", (bot_id,))
             return int(cur.rowcount)
 
+    def unfinished_runs(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute("SELECT doc FROM runs WHERE status IN ('queued','running') ORDER BY seq").fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     # ----------------------------------------------------------------- bots
     def put_bot(self, doc: dict[str, Any]) -> None:
-        with self._lock:
+        with self.transaction():
             existing = self._db.execute("SELECT created_seq FROM bots WHERE bot_id=?", (doc["bot_id"],)).fetchone()
             seq = existing[0] if existing else self._next_seq()
             self._db.execute("INSERT OR REPLACE INTO bots(bot_id, created_seq, doc) VALUES (?,?,?)", (doc["bot_id"], seq, self._dump(doc)))
@@ -160,7 +215,7 @@ class Store:
         return [json.loads(r[0]) for r in rows]
 
     def delete_bot(self, bot_id: str) -> bool:
-        with self._lock:
+        with self.transaction():
             cur = self._db.execute("DELETE FROM bots WHERE bot_id=?", (bot_id,))
             self._db.execute("DELETE FROM messages WHERE bot_id=?", (bot_id,))
             self._db.execute("DELETE FROM spend WHERE scope=?", (f"bot:{bot_id}",))
@@ -170,16 +225,19 @@ class Store:
     def compact(self) -> None:
         """Checkpoint the WAL and shrink it to zero so deleted content does not linger on disk."""
         with self._lock:
-            self._db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            if self._db.in_transaction:
+                self._compact_pending = True
+            else:
+                self._db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
     # ----------------------------------------------------------------- messages
     def put_message(self, doc: dict[str, Any]) -> None:
-        with self._lock:
+        with self.transaction():
             existing = self._db.execute("SELECT seq FROM messages WHERE message_id=?", (doc["message_id"],)).fetchone()
             seq = existing[0] if existing else self._next_seq()
             self._db.execute(
-                "INSERT OR REPLACE INTO messages(message_id, bot_id, seq, doc) VALUES (?,?,?,?)",
-                (doc["message_id"], doc["bot_id"], seq, self._dump(doc)),
+                "INSERT OR REPLACE INTO messages(message_id, bot_id, seq, role, state, doc) VALUES (?,?,?,?,?,?)",
+                (doc["message_id"], doc["bot_id"], seq, str(doc.get("role", "")), str(doc.get("state", "")), self._dump(doc)),
             )
 
     def get_message(self, message_id: str) -> Optional[dict[str, Any]]:
@@ -201,17 +259,22 @@ class Store:
         return [json.loads(r[0]) for r in rows]
 
     def count_messages(self, bot_id: str, *, pending_only: bool = False) -> int:
-        docs = self.list_messages(bot_id, limit=100000)
+        sql = "SELECT COUNT(*) FROM messages WHERE bot_id=?"
         if pending_only:
-            return sum(1 for d in docs if d.get("role") == "user" and d.get("state") == "pending")
-        return len(docs)
+            sql += " AND role='user' AND state='pending'"
+        with self._lock:
+            return int(self._db.execute(sql, (bot_id,)).fetchone()[0])
 
     def pending_messages(self, bot_id: str) -> list[dict[str, Any]]:
-        return [d for d in self.list_messages(bot_id, limit=100000) if d.get("role") == "user" and d.get("state") == "pending"]
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT doc FROM messages WHERE bot_id=? AND state='pending' AND role='user' ORDER BY seq", (bot_id,)
+            ).fetchall()
+        return [json.loads(row[0]) for row in rows]
 
     # ----------------------------------------------------------------- groups
     def put_group(self, doc: dict[str, Any]) -> None:
-        with self._lock:
+        with self.transaction():
             existing = self._db.execute("SELECT created_seq FROM groups WHERE group_id=?", (doc["group_id"],)).fetchone()
             seq = existing[0] if existing else self._next_seq()
             self._db.execute(
@@ -223,17 +286,18 @@ class Store:
             row = self._db.execute("SELECT doc FROM groups WHERE group_id=?", (group_id,)).fetchone()
         return json.loads(row[0]) if row else None
 
+    def unfinished_groups(self) -> list[dict[str, Any]]:
+        with self._lock:
+            rows = self._db.execute("SELECT doc FROM groups ORDER BY created_seq").fetchall()
+        return [doc for (raw,) in rows if (doc := json.loads(raw)).get("status") in ("queued", "running")]
+
     # ----------------------------------------------------------------- spend
     def add_spend(self, scope: str, usd: float, day: Optional[str] = None) -> float:
         day = day or now_iso()[:10]
-        with self._lock:
-            row = self._db.execute("SELECT usd FROM spend WHERE day=? AND scope=?", (day, scope)).fetchone()
-            total = (row[0] if row else 0.0) + float(usd)
-            self._db.execute("INSERT OR REPLACE INTO spend(day, scope, usd) VALUES (?,?,?)", (day, scope, total))
-            return total
+        with self.transaction():
+            return dollars(self._add_spend_locked(scope, money_micros(usd), day))
 
     def spend_today(self, scope: str, day: Optional[str] = None) -> float:
         day = day or now_iso()[:10]
         with self._lock:
-            row = self._db.execute("SELECT usd FROM spend WHERE day=? AND scope=?", (day, scope)).fetchone()
-        return float(row[0]) if row else 0.0
+            return dollars(self._spent_micros(scope, day))

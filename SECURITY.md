@@ -15,7 +15,24 @@ Additional posture:
 
 - The API (`echo_adk.api`) binds to loopback only and refuses any other host at both the CLI and the socket.
 - Every string that leaves the process (ledger, API, MCP, logs) passes `redact()` (key/token/secret/password assignments, `Bearer` tokens, common token shapes, private key blocks). Secret-named fields are wiped outright.
-- echoBots share nothing: one Lease per turn, one memory scope per bot (`bot:<id>`), no shell, no browser, no tokens. `DELETE /bots/{id}` removes the record, messages, runs, ledger/proof files, memory and spend.
+- Each bot has one Lease per turn and its own memory scope (`bot:<id>`). The optional browser uses a
+  separate subprocess and persistent Chromium profile per bot, a host-owned filtering proxy and exact
+  origins. This is process/profile isolation under the same OS user, not a container or VM boundary.
+  Browser workers receive an allowlisted environment with no SDK or OAuth credentials; caller input
+  cannot select executable paths, browser flags, JavaScript, file uploads, downloads or provider hosts.
+- OAuth credentials live only in the optional encrypted host vault. Owner/bot/connection bindings,
+  one-use state, S256 PKCE, strict redirect matching and durable token-rotation claims constrain each
+  grant. The OAuth callback is an owner-only protocol endpoint excluded from the general SDK capability
+  gate because that gate may audit application params. Provider consent is never fabricated.
+- Provider polling subscriptions may use only already-connected, host-declared read-only operations.
+  Deterministic prechecks and durable, bounded event receipts do not change a bot's task or authority.
+  Stop disables its subscriptions; unknown delivery outcomes never mint another event identity.
+- Bot deletion removes its local browser profile, artifacts, connections, subscriptions, memory and run
+  records, while preserving aggregate spend. V2 returns provider revocation receipts separately: local
+  disconnection does not claim that an unavailable provider successfully revoked a grant.
+- Team imports validate definitions before writes, start bots paused with empty leases, and exclude
+  credentials, sessions and running work. Interrupted imports have reviewable resource hashes and
+  conservative recovery; changed or newly attached resources are not silently deleted.
 - Cost: per-run budget clamped to the lane and the service caps (120 calls, 5 USD, 4800 s), per-bot `daily_cost_cap_usd <= 5` (turn refused with `budget_exceeded`), service-wide daily cap `ECHO_ADK_DAILY_CAP_USD` (default 200 USD).
 - Headless everywhere. Structured JSON logs on stderr; `ECHO_ADK_DEBUG=1` adds debug records (never credentials).
 

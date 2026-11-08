@@ -192,7 +192,7 @@ BUILTIN_CAPABILITIES: tuple[Capability, ...] = (
         "echo.shell.run",
         1,
         "shell.exec",
-        {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]},
+        {"type": "object", "properties": {"cmd": {"type": "string"}}, "required": ["cmd"]},
         "green",
         "run",
         "Run a shell command on a cluster node through the gate",

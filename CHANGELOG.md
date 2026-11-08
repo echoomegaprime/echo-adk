@@ -13,7 +13,10 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
 - Authenticated connector polling, deterministic prechecks and durable deduplicated event delivery.
 - One-time, monthly, yearly and bounded five-field cron schedules; versioned editable notes and audited
   restore; portable team/department/templates with preview digests and interrupted-import recovery.
-- Fifty-three closed SDK operation contracts now cover the native management and workspace APIs.
+- Explicit per-bot ECF note capture through the existing admitted gate, fixed host project bindings,
+  durable same-request reconciliation, validated persistence receipts and exact readback. It remains
+  disabled until configured; controlled transport tests do not claim a live canonical write.
+- Fifty-six closed SDK operation contracts now cover the native management and workspace APIs.
   They remain proposed registrations, requiring the existing authenticated Tier 2 host admission.
 
 - Additive `/v2` API and `docs/CONTRACT_V2.md`, mirrored in

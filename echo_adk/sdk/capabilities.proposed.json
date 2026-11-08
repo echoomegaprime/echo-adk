@@ -3140,6 +3140,331 @@
       "lifecycle_status": "active"
     },
     {
+      "id": "echo.echobots.continuity.status",
+      "description": "Inspect this bot's host-bound ECF capture outbox; local availability is not remote write authorization. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.continuity.status",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "bot_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "echobots.manage",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.continuity.capture",
+      "description": "Capture one explicit bounded summary through the existing gate and this bot's continuity.write lease; the host fixes project attribution. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.continuity.capture",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "request_ref": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_.:-]{1,100}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": [
+          "bot_id",
+          "request_ref",
+          "title",
+          "detail"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "echobots.manage",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
+      "id": "echo.echobots.continuity.reconcile",
+      "description": "Explicitly reconcile the original durable ECF request; an uncertain write may be resubmitted with the same payload and requestId only. Owner-only control plane; does not grant child workers recursive management authority.",
+      "handler_kind": "router",
+      "target_url": "http://127.0.0.1:8000/adk-sdk/bot.continuity.reconcile",
+      "target_method": "POST",
+      "args_mode": "json_body",
+      "input_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "bot_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          },
+          "capture_id": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$"
+          }
+        },
+        "required": [
+          "bot_id",
+          "capture_id"
+        ],
+        "minProperties": 0
+      },
+      "output_schema_json": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "ok",
+          "operation",
+          "untrusted"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "untrusted": {
+            "const": true
+          },
+          "data": {
+            "type": "object"
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "not_started",
+              "failed",
+              "unknown"
+            ]
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "ok": {
+                "const": true
+              }
+            },
+            "required": [
+              "data"
+            ],
+            "not": {
+              "required": [
+                "error"
+              ]
+            }
+          },
+          {
+            "properties": {
+              "ok": {
+                "const": false
+              }
+            },
+            "required": [
+              "error",
+              "message",
+              "outcome"
+            ],
+            "not": {
+              "required": [
+                "data"
+              ]
+            }
+          }
+        ],
+        "x-echo-enforce-output-contract": true
+      },
+      "required_scope": "echobots.manage",
+      "danger_tier": 2,
+      "schema_version": 1,
+      "lifecycle_status": "active"
+    },
+    {
       "id": "echo.echobots.marketplace",
       "description": "Read host-configured OAuth provider and operation availability. Owner-only control plane; does not grant child workers recursive management authority.",
       "handler_kind": "router",

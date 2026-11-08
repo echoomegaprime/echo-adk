@@ -52,6 +52,9 @@ ROUTES: list[Route] = [
     ("GET", re.compile(rf"^/groups/{ID}$"), "get_group"),
 ]
 V2_ROUTES: list[Route] = [
+    ("GET", re.compile(rf"^/bots/{ID}/continuity$"), "workspace_continuity_status"),
+    ("POST", re.compile(rf"^/bots/{ID}/continuity/capture$"), "workspace_continuity_capture"),
+    ("POST", re.compile(rf"^/bots/{ID}/continuity/reconcile$"), "workspace_continuity_reconcile"),
     ("POST", re.compile(rf"^/bots/{ID}/events$"), "bot_event"),
     ("PUT", re.compile(rf"^/bots/{ID}$"), "update_bot"),
     ("POST", re.compile(rf"^/bots/{ID}/stop$"), "stop_bot"),

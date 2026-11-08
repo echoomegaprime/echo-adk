@@ -49,6 +49,40 @@ def operations() -> list[Any]:
         )
 
     add(
+        "continuity.status",
+        "GET",
+        bot + "/continuity",
+        {},
+        read=True,
+        description="Inspect this bot's host-bound ECF capture outbox; local availability is not remote write authorization.",
+    )
+    add(
+        "continuity.capture",
+        "POST",
+        bot + "/continuity/capture",
+        {
+            "request_ref": {"type": "string", "pattern": "^[A-Za-z0-9_.:-]{1,100}$"},
+            "title": {"type": "string", "minLength": 1, "maxLength": 200},
+            "detail": {"type": "string", "minLength": 1, "maxLength": 4000},
+        },
+        ("request_ref", "title", "detail"),
+        description=(
+            "Capture one explicit bounded summary through the existing gate and this bot's continuity.write lease; "
+            "the host fixes project attribution."
+        ),
+    )
+    add(
+        "continuity.reconcile",
+        "POST",
+        bot + "/continuity/reconcile",
+        {"capture_id": ID},
+        ("capture_id",),
+        description=(
+            "Explicitly reconcile the original durable ECF request; an uncertain write may be resubmitted "
+            "with the same payload and requestId only."
+        ),
+    )
+    add(
         "marketplace",
         "GET",
         base + "/marketplace",
@@ -299,6 +333,55 @@ def valid_payload(operation: str, params: dict[str, Any], payload: dict[str, Any
     def identity(value: Any) -> bool:
         return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{32}", value) is not None
 
+    if operation.startswith("bot.continuity."):
+        if (
+            payload.get("bot_id") != params.get("bot_id")
+            or payload.get("untrusted") is not True
+            or payload.get("shared_remote_ledger") is not True
+        ):
+            return False
+        if operation.endswith(".status"):
+            return (
+                type(payload.get("configured")) is bool
+                and type(payload.get("lease_permits_capture")) is bool
+                and payload.get("remote_authorization_verified") is False
+                and isinstance(payload.get("captures"), list)
+                and len(payload["captures"]) <= 128
+                and all(
+                    valid_payload("bot.continuity.capture", params, row) is True for row in payload["captures"] if isinstance(row, dict)
+                )
+                and all(isinstance(row, dict) for row in payload["captures"])
+            )
+        if (
+            not identity(payload.get("capture_id"))
+            or ("capture_id" in params and payload["capture_id"] != params["capture_id"])
+            or payload.get("state") not in ("prepared", "uncertain", "saved", "verified", "blocked", "conflict")
+            or type(payload.get("saved")) is not bool
+            or type(payload.get("verified")) is not bool
+            or payload["verified"] != (payload["state"] == "verified")
+            or payload["saved"] != (payload["state"] in ("saved", "verified"))
+            or not isinstance(payload.get("request_id"), str)
+            or not isinstance(payload.get("request_ref"), str)
+            or re.fullmatch(r"[A-Za-z0-9_.:-]{1,100}", payload["request_ref"]) is None
+            or ("request_ref" in params and payload["request_ref"] != params["request_ref"])
+            or not isinstance(payload.get("content_sha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", payload["content_sha256"]) is None
+        ):
+            return False
+        receipt = payload.get("receipt")
+        if not payload["saved"]:
+            return receipt is None and not payload["verified"]
+        return (
+            isinstance(receipt, dict)
+            and receipt.get("saved") is True
+            and receipt.get("verified") is True
+            and all(isinstance(receipt.get(key), str) and re.fullmatch(r"[A-Za-z0-9_-]{1,100}", receipt[key]) for key in ("id", "eventId"))
+            and receipt.get("kind") == "note"
+            and receipt.get("requestId") == payload["request_id"]
+            and receipt.get("contentSha256") == payload["content_sha256"]
+            and receipt.get("receiptState") == "capture_verified"
+            and type(receipt.get("duplicate")) is bool
+        )
     if operation == "bot.marketplace":
         return isinstance(payload.get("providers"), list) and isinstance(payload.get("configured"), bool)
     if operation.startswith("bot.browser."):

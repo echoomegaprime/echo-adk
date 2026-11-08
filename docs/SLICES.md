@@ -31,7 +31,7 @@ Legend: `[x]` delivered in this branch, `[~]` partially delivered (what is missi
 - [~] **7. EchoMemoryService + EchoArtifactService** - the core's local `MemoryStore` now supplies bounded,
   exact-scope recall and durable redacted write receipts in final envelope data. Integrity checks and
   legacy filename filtering are implemented in `echo_adk/core/ledger.py` and `echo_adk/core/runner.py`.
-  *Missing:* the external service adapters, Crystal/ECF search+capture acknowledgments, and MinIO/ESH
+  *Missing:* live external service acceptance, configured ECF capture acknowledgments, and MinIO/ESH
   artifacts. A local receipt is not an external memory acknowledgment; `Proof.receipts` is unchanged.
 - [x] **8. Skills bridge** - Agent-Skills loader/validator (`name` <= 64 kebab + dir match, `description` <= 1024,
   L1 -> L2 -> L3 references with traversal refusal); `echo-adk validate --skills-dir` reports violations.
@@ -83,7 +83,7 @@ Legend: `[x]` delivered in this branch, `[~]` partially delivered (what is missi
   remain fail-closed.
 - [x] **Long-lived inbox lookup** - indexed message role/state projections replace truncated history scans,
   with transactional legacy backfill. Recent pending messages remain visible after large message histories.
-- [ ] **External delivery gates** - OS/container browser isolation, Crystal/ECF and artifact service acknowledgments,
+- [ ] **External delivery gates** - OS/container browser isolation, live configured ECF and artifact service acknowledgments,
   authenticated upstream webhook adapters, live broker/model certification, FORGE installation evidence,
   CertForge/Harbormaster approval, and a rollback drill are not delivered by these local changes. Product
   comparisons need a defined evaluation set and measured results; no superiority claim is implied.
@@ -111,7 +111,13 @@ owned browser workers are now optional, while R1–R5 and production release adm
   event IDs; no unauthenticated public webhook receiver is introduced.
 - [x] One-time/monthly/yearly/cron schedules, revisioned notes and portable teams/departments/templates
   with exact preview hashes, paused empty leases, interrupted-import inspection and conservative recovery.
-- [x] Versioned APIs and 53 proposed SDK capability contracts; Prime has matching generated schemas,
-  resource panels and 32 owner chat tools. Runtime configuration/consent is distinct from source availability.
+- [x] Versioned APIs and 56 proposed SDK capability contracts, including three explicit ECF outbox
+  operations. The companion Prime schemas and controls must match this extension. Runtime
+  configuration/consent is distinct from source availability.
+- [x] Explicit bounded ECF notes through the existing admitted gate, fixed host project bindings,
+  exact bot leases, durable same-request reconciliation, validated owner persistence receipts and
+  project/hash/text readback. No automatic transcript capture or startup replay. Controlled HTTP
+  tests prove the implementation; actual remote permission, canonical write acceptance and new
+  registrations remain separate release requirements. See `docs/BOT_CONTINUITY.md`.
 - [ ] Production installation, provider credentials/consent, approved SDK registration and caller scopes,
   and exact-source production certification remain separately required. Code/tests do not manufacture them.

@@ -19,6 +19,7 @@ from ..core.types import is_id
 
 class BotWorkspace:
     def __init__(self, service: Any) -> None:
+        from ..bots.continuity import from_env as continuity_from_env
         from ..bots.memory import BotMemoryRevisions
         from ..browser import BrowserConfig, BrowserManager
         from ..connections import from_env
@@ -30,6 +31,13 @@ class BotWorkspace:
         self.browser = BrowserManager(service.state_dir, BrowserConfig.from_env())
         self.connections = from_env(service.state_dir, require_bot=self.require_bot, owner_id="prime-owner")
         self.memory = BotMemoryRevisions(service.state_dir)
+        self.continuity = continuity_from_env(
+            service.state_dir,
+            owner_id="prime-owner",
+            require_bot=self.require_bot,
+            capabilities=lambda bot_id: service.get_agent(self.require_bot(bot_id)["agent"]).capabilities,
+            broker=lambda: service.broker,
+        )
         self.subscriptions = SubscriptionManager(service.state_dir, self.connections, self.require_bot, self.deliver_event)
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -142,6 +150,7 @@ class BotWorkspace:
                 self.browser.has_resources(bot_id)
                 or self.connections.has_resources(bot_id)
                 or (hasattr(self, "subscriptions") and self.subscriptions.has_resources(bot_id))
+                or self.continuity.has_resources(bot_id)
             )
         except Exception:
             return True
@@ -174,12 +183,14 @@ class BotWorkspace:
         self.subscriptions.close()
         self.connections.close()
         self.memory.close()
+        self.continuity.close()
 
     def delete(self, bot_id: str) -> dict[str, Any]:
         # Called only after BotManager has verified that active work is drained.
         from .service import ApiError
 
         try:
+            self.continuity.ensure_deletable(bot_id)
             self.subscriptions.disable_bot(bot_id)
             connections = self.connections.delete_bot(bot_id)
             if connections.get("deleted") is not True:
@@ -194,6 +205,7 @@ class BotWorkspace:
             browser = self.browser.reset(bot_id)
             self.subscriptions.delete_bot(bot_id)
             self.memory.delete(bot_id)
+            self.continuity.delete_bot(bot_id)
         except ApiError:
             raise
         except Exception as error:
@@ -206,7 +218,7 @@ class BotWorkspace:
                 bot_id=bot_id,
                 deleted=False,
             ) from None
-        return {"browser": browser, "connections": connections, "memory_deleted": True}
+        return {"browser": browser, "connections": connections, "memory_deleted": True, "canonical_continuity_retained": True}
 
     def dispatch(self, operation: str, bot_id: str | None, body: Any, query: dict[str, str]) -> dict[str, Any]:
         with self.admission():
@@ -243,6 +255,17 @@ class BotWorkspace:
 
         if operation == "workspace_marketplace":
             return self.connections.catalog()
+        if operation.startswith("workspace_continuity_"):
+            assert bot_id is not None
+            action = operation.removeprefix("workspace_continuity_")
+            if query:
+                raise ApiError(400, "invalid", "Continuity does not accept query parameters")
+            if action == "status":
+                return self.continuity.status(bot_id)
+            if action == "capture":
+                return self.continuity.capture(bot_id, data)
+            d = self.fields(data, {"capture_id"}, {"capture_id"})
+            return self.continuity.reconcile(bot_id, d["capture_id"])
         if operation == "workspace_callback":
             d = self.fields(data, {"state", "code"}, {"state", "code"})
             return self.connections.complete_callback(d["state"], d["code"])

@@ -1,6 +1,6 @@
 # ECHO SDK host adapter
 
-This package exposes 53 native v2 management/resource operations through an installable adapter
+This package exposes 56 native v2 management/resource operations through an installable adapter
 inside the existing ECHO SDK host. It contains real implementations and proposed
 registration specifications. Importing it does not register capabilities, start
 a server, grant permissions, or modify the live SDK registry.
@@ -18,7 +18,7 @@ The optional extra pins FastAPI 0.162.2, httpx 0.28.1 and Uvicorn 0.54.0. The co
 package still has no runtime dependencies. CI installs `.[dev,sdk-host,calendar,connections]` and runs
 the ASGI tests as required tests. They do not silently skip missing dependencies.
 
-Browser, OAuth, memory, polling and portability contracts are in `workspace.py`.
+Browser, OAuth, memory, polling, explicit ECF capture and portability contracts are in `workspace.py`.
 `scripts/export_prime_workspace_contract.py` exports the matching Prime client schemas.
 The OAuth callback is deliberately not an SDK operation: one-use authorization code/state must
 not pass through a general gate that might audit application parameters. Prime sends that owner
@@ -104,6 +104,11 @@ There is no direct Store/Runner access, configurable destination per call,
 redirect following, environment proxy use, or automatic mutation retry. An
 uncertain transport result is reported as `outcome: unknown`; callers must read
 the existing receipt or recover an event by its original ID before retrying work.
+
+ECF capture and reconciliation alone permit a 55-second native transport wait
+around their cooperative 45-second attempt. Other operations retain 30 seconds.
+Their durable outbox and exact same-ID recovery contract are documented in
+`docs/BOT_CONTINUITY.md`; there is no automatic capture or mutation retry.
 
 ## Reviewable registration manifest
 

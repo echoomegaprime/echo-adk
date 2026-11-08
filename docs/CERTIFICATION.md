@@ -21,7 +21,7 @@ bounded checks, and writes only disposable synthetic state in a temporary direct
 | Check | Observed requirement |
 | --- | --- |
 | Local capability policy | Missing, empty and exhausted leases are refused; unknown capabilities and exceeded call budgets are denied; proposed Tier 2 management still requires a grant. |
-| SDK operation contract | All 23 operations retain closed inputs, Tier 2 classification, fixed `adk.manage` or `echobots.manage` scope and enforced outputs; a caller cannot provide owner authority or bypass the host authorization callback. |
+| SDK operation contract | All 53 operations retain closed inputs, Tier 2 classification, fixed `adk.manage` or `echobots.manage` scope and enforced outputs; a caller cannot provide owner authority or bypass the host authorization callback. |
 | Durable event and budget behavior | A paused bot queues one event once, rejects changed replays and budget over-admission, retains its receipt and reservation across restart, and cancels unstarted work without charge or implicit resume. |
 | Local memory | Scope identities remain separate, metadata cannot be replaced by payloads, redacted receipts survive reopening, and digest tampering is refused. |
 | Interval scheduling | Late interval work coalesces, `skip` ignores missed occurrences, and invalid bounds/authority fields are refused. |

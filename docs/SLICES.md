@@ -58,8 +58,9 @@ Legend: `[x]` delivered in this branch, `[~]` partially delivered (what is missi
   definitions at runtime; each carries `origin:{by, prompt_sha256?, created_at}`; capabilities must already be in the
   default-deny registry, so a prompt cannot grant itself a new tool.
 - **echoBots boundaries:** each turn has an exact-scope lease and each bot has a distinct local memory scope.
-  The service does not provision a separate browser, shell, credential store, or OS sandbox per bot. V2 health
-  reports the browser unavailable. Per-bot `daily_cost_cap_usd <= 5`, service-wide `ECHO_ADK_DAILY_CAP_USD`
+  The requested workspaces below add optional separate browser processes/profiles and encrypted per-bot OAuth
+  records. No arbitrary shell or per-bot OS sandbox is provisioned; availability reflects actual configuration.
+  Per-bot `daily_cost_cap_usd <= 5`, service-wide `ECHO_ADK_DAILY_CAP_USD`
   default 200, and the single-run 5 USD ceiling are enforced through the reservation path described below.
 
 ## Unreleased local automation and reliability
@@ -82,7 +83,7 @@ Legend: `[x]` delivered in this branch, `[~]` partially delivered (what is missi
   remain fail-closed.
 - [x] **Long-lived inbox lookup** - indexed message role/state projections replace truncated history scans,
   with transactional legacy backfill. Recent pending messages remain visible after large message histories.
-- [ ] **External delivery gates** - isolated browser provider, Crystal/ECF and artifact service acknowledgments,
+- [ ] **External delivery gates** - OS/container browser isolation, Crystal/ECF and artifact service acknowledgments,
   authenticated upstream webhook adapters, live broker/model certification, FORGE installation evidence,
   CertForge/Harbormaster approval, and a rollback drill are not delivered by these local changes. Product
   comparisons need a defined evaluation set and measured results; no superiority claim is implied.
@@ -95,3 +96,22 @@ Migration adds budget and inbox projections without removing legacy memory. Down
 new holds and then restore a consistent backup or use a reviewed reconciliation; old binaries do not
 maintain the new columns or read new scope-encoded memory paths. See `docs/CONTRACT_V2.md` for restart,
 deletion, migration, and rollback semantics.
+
+## Requested per-bot workspaces (2026-11-08)
+
+The owner explicitly requested per-bot browsers, an OAuth marketplace and the remaining automation
+features. This authorizes a narrow update to the former no-browser contribution guideline: headless
+owned browser workers are now optional, while R1–R5 and production release admission remain intact.
+
+- [x] Browser process/profile isolation, deny-by-default host egress, opaque controls, bounded
+  screenshots, cleanup and cancellation. A browser context is not labeled a container/VM.
+- [x] Per-bot OAuth catalog, S256 state/redirect binding, encrypted credentials, refresh and revocation;
+  owner-only callback is excluded from general SDK auditing and model tool arguments.
+- [x] Read-only authenticated polling, deterministic conditions, bounded retry horizons and durable
+  event IDs; no unauthenticated public webhook receiver is introduced.
+- [x] One-time/monthly/yearly/cron schedules, revisioned notes and portable teams/departments/templates
+  with exact preview hashes, paused empty leases, interrupted-import inspection and conservative recovery.
+- [x] Versioned APIs and 53 proposed SDK capability contracts; Prime has matching generated schemas,
+  resource panels and 32 owner chat tools. Runtime configuration/consent is distinct from source availability.
+- [ ] Production installation, provider credentials/consent, approved SDK registration and caller scopes,
+  and exact-source production certification remain separately required. Code/tests do not manufacture them.

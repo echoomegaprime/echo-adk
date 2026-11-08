@@ -33,7 +33,7 @@ from ..core.types import (
     new_id,
     now_iso,
 )
-from .schedules import ScheduleError, missed_policy, next_occurrence, should_run, utc_iso, validate_schedule
+from .schedules import ScheduleError, initial_occurrence, missed_policy, next_occurrence, should_run, utc_iso, validate_schedule
 from .triggers import (
     EVENT_INSTRUCTION,
     EVENT_RECEIPT_TTL_S,
@@ -229,6 +229,8 @@ class BotManager:
             out["next_run_at"] = utc_iso(bot["next_run_ts"])
         if bot.get("last_scheduled_ts") is not None:
             out["last_scheduled_at"] = utc_iso(bot["last_scheduled_ts"])
+        if "schedule_complete" in bot:
+            out["schedule_complete"] = bool(bot["schedule_complete"])
         return out
 
     def _require(self, bot_id: str) -> dict[str, Any]:
@@ -280,8 +282,10 @@ class BotManager:
             "last_run_at": None,
             "last_error": None,
         }
-        if schedule and "at" in schedule:
-            bot["next_run_ts"] = next_occurrence(schedule, self._clock())
+        if schedule and "every_s" not in schedule:
+            bot["next_run_ts"] = initial_occurrence(schedule, self._clock())
+        if schedule and "once_at" in schedule:
+            bot["schedule_complete"] = False
         self.store.put_bot(bot)
         log.info("bot_created", bot_id=bot["bot_id"], agent=agent.name)
         return self._public(bot)
@@ -341,8 +345,12 @@ class BotManager:
             if "schedule" in body:
                 updated["schedule"] = validate_schedule(body["schedule"])
                 updated.pop("next_run_ts", None)
+                updated.pop("schedule_complete", None)
                 if updated["schedule"] is not None:
-                    updated["next_run_ts"] = next_occurrence(updated["schedule"], self._clock())
+                    occurrence = next_occurrence if "every_s" in updated["schedule"] else initial_occurrence
+                    updated["next_run_ts"] = occurrence(updated["schedule"], self._clock())
+                    if "once_at" in updated["schedule"]:
+                        updated["schedule_complete"] = False
             self._validate_skill_context(self.service.get_agent(bot["agent"]), updated.get("plugins", []))
             self.store.put_bot(updated)
         log.info("bot_updated", bot_id=bot_id, fields=sorted(body))
@@ -358,6 +366,7 @@ class BotManager:
         with self._lock, self.store.transaction():
             bot = self._require(bot_id)
             self.pause(bot_id)
+            self.service.workspace.subscriptions.disable_bot(bot_id)
             run_ids = {m["run_id"] for m in self.store.pending_messages(bot_id) if m.get("run_id")}
             run_ids.update(run_id for run_id in (bot.get("active_run_id"), bot.get("scheduled_run_id")) if run_id)
             group = self.store.get_group(bot["group_reservation"]) if bot.get("group_reservation") else None
@@ -381,6 +390,8 @@ class BotManager:
                 if schedule and missed_policy(schedule) == "skip" and bot.get("next_run_ts") is not None:
                     if bot["next_run_ts"] < self._clock():
                         bot["next_run_ts"] = next_occurrence(schedule, self._clock())
+                        if bot["next_run_ts"] is None:
+                            bot["schedule_complete"] = True
                 self.store.put_bot(bot)
         return self._public(bot)
 
@@ -400,19 +411,22 @@ class BotManager:
         """Remove bot-local state; aggregate fleet accounting and shared group history remain."""
         from ..api.service import ApiError
 
-        with self._lock:
+        with self.service.workspace.resource_guard([bot_id]), self._lock:
             bot = self._require(bot_id)
             active = self.store.get_run(bot["active_run_id"]) if bot.get("active_run_id") else None
             group = self.store.get_group(bot["group_reservation"]) if bot.get("group_reservation") else None
             if (active and active["status"] in ("queued", "running")) or (group and group["status"] in ("queued", "running")):
                 raise ApiError(409, "invalid", "bot has active work; stop it and wait for completion before deletion")
+            # Partial provider cleanup retains a paused bot for an explicit retry.
+            self.pause(bot_id)
+            cleanup = self.service.workspace.delete(bot_id)
             for run in self.store.list_runs(bot_id=bot_id, limit=100000):
                 self.service.forget_run(run["run_id"])
             self.store.delete_runs_for_bot(bot_id)
             self.store.delete_bot(bot_id)
             self.service.memory.delete(f"bot:{bot_id}")
         log.info("bot_deleted", bot_id=bot_id)
-        return {"bot_id": bot_id, "deleted": True}
+        return {"bot_id": bot_id, "deleted": True, "cleanup": cleanup}
 
     # ------------------------------------------------------------------ inbox
     def message(self, bot_id: str, body: Any) -> dict[str, Any]:
@@ -542,7 +556,7 @@ class BotManager:
                     dispatched += int(self._dispatch(bot, pending[0]["run_id"], current))
                     continue
                 schedule = bot.get("schedule")
-                if not schedule:
+                if not schedule or bot.get("schedule_complete"):
                     continue
                 try:
                     schedule = validate_schedule(schedule)
@@ -553,14 +567,20 @@ class BotManager:
                             previous = bot.get("last_dispatch_ts")
                             due = float(previous) + schedule["every_s"] if previous is not None else current
                         else:
-                            due = next_occurrence(schedule, current)
+                            due = initial_occurrence(schedule, current)
                         bot["next_run_ts"] = due
+                        if due is None:
+                            bot["schedule_complete"] = True
                         self.store.put_bot(bot)
+                    if due is None:
+                        continue
                     if current < due:
                         continue
                     following = next_occurrence(schedule, current)
                     if not should_run(schedule, due, current):
                         bot["next_run_ts"] = following
+                        if following is None:
+                            bot["schedule_complete"] = True
                         self.store.put_bot(bot)
                         continue
                     with self.store.transaction():
@@ -569,6 +589,8 @@ class BotManager:
                         run_id = self.service.queue_bot_run(bot, agent, prompt, message_id=None)
                         self.store.update_run(run_id, bot_delivery_version=1)
                         bot["next_run_ts"] = following
+                        if following is None:
+                            bot["schedule_complete"] = True
                         bot["last_scheduled_ts"] = due
                         bot["scheduled_run_id"] = run_id
                         self.store.put_bot(bot)

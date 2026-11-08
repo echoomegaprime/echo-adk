@@ -115,9 +115,13 @@ class AdkService:
         self._stops: dict[str, threading.Event] = {}
         self._lock = threading.RLock()
         self.bots = BotManager(self, tick_s=scheduler_tick_s)
+        from .workspace import BotWorkspace
+
+        self.workspace = BotWorkspace(self)
         self._recovery = self._recover_incomplete_runs()
         if start_scheduler:
             self.bots.start()
+            self.workspace.start()
         log.info("service_ready", agents=len(self.agents), state_dir=str(self.state_dir), daily_cap_usd=self.daily_cap_usd)
 
     def _default_registry(self) -> CapabilityRegistry:
@@ -135,10 +139,12 @@ class AdkService:
         return self._broker
 
     def close(self) -> None:
+        self.workspace.stop()
         self.bots.stop()
         for event in list(self._stops.values()):
             event.set()
         self._executor.shutdown(wait=True, cancel_futures=True)
+        self.workspace.close()
         # Shutdown cancels executor futures, but paused inbox jobs remain durable. They are
         # never silently replayed: recovery pauses any affected bot before its scheduler starts.
         for doc in self.store.unfinished_runs():
@@ -601,7 +607,15 @@ class AdkService:
             return self._finish(run_id, STATUS_FAILED, error={"code": "invalid", "message": str(exc)}) or doc
         lease = Lease.from_dict(doc["lease"])
         budget = Budget.from_dict(doc["budget"])
-        runner = Runner(model, self.broker, self.registry, ledger=self.ledger, memory=self.memory, skill_library=self.skill_library)
+        runner = Runner(
+            model,
+            self.broker,
+            self.registry,
+            ledger=self.ledger,
+            memory=self.memory,
+            memory_notes=lambda scope: self.workspace.memory.read(scope[4:]) if scope.startswith("bot:") else None,
+            skill_library=self.skill_library,
+        )
         # Persist before invoking anything. If the process disappears after this point, recovery
         # treats the cost as unknown and retains the ceiling rather than inventing a zero charge.
         self.store.update_run(run_id, execution_started=True)

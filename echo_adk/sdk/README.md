@@ -1,6 +1,6 @@
 # ECHO SDK host adapter
 
-This package exposes all 23 native v2 operations through an installable adapter
+This package exposes 53 native v2 management/resource operations through an installable adapter
 inside the existing ECHO SDK host. It contains real implementations and proposed
 registration specifications. Importing it does not register capabilities, start
 a server, grant permissions, or modify the live SDK registry.
@@ -15,8 +15,14 @@ python -m pip install 'echo-adk[sdk-host]'
 
 For a reviewed source checkout, use `python -m pip install -e '.[sdk-host]'`.
 The optional extra pins FastAPI 0.162.2, httpx 0.28.1 and Uvicorn 0.54.0. The core
-package still has no runtime dependencies. CI installs `.[dev,sdk-host,calendar]` and runs
+package still has no runtime dependencies. CI installs `.[dev,sdk-host,calendar,connections]` and runs
 the ASGI tests as required tests. They do not silently skip missing dependencies.
+
+Browser, OAuth, memory, polling and portability contracts are in `workspace.py`.
+`scripts/export_prime_workspace_contract.py` exports the matching Prime client schemas.
+The OAuth callback is deliberately not an SDK operation: one-use authorization code/state must
+not pass through a general gate that might audit application parameters. Prime sends that owner
+protocol response directly to the native callback endpoint. Models receive neither code nor state.
 
 The native worker's calendar schedules also need IANA timezone data. Install
 `echo-adk[calendar]` in the worker environment on Windows or images without a

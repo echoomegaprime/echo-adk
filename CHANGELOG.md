@@ -6,6 +6,16 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
 
 ### Added
 
+- Per-bot headless browser processes and persistent profiles with fixed host egress policy, bounded
+  snapshots/opaque control refs, screenshots, cancellation, close/reset and actual runtime probes.
+- Per-bot OAuth app catalog, S256 consent flow, encrypted grant storage, refresh, operation routing and
+  explicit revocation receipts. Owner callback codes stay outside general SDK capability logging.
+- Authenticated connector polling, deterministic prechecks and durable deduplicated event delivery.
+- One-time, monthly, yearly and bounded five-field cron schedules; versioned editable notes and audited
+  restore; portable team/department/templates with preview digests and interrupted-import recovery.
+- Fifty-three closed SDK operation contracts now cover the native management and workspace APIs.
+  They remain proposed registrations, requiring the existing authenticated Tier 2 host admission.
+
 - Additive `/v2` API and `docs/CONTRACT_V2.md`, mirrored in
   `echo-cli/docs/echo-code/ECHO_BOTS_API_V2.md`; v1 response shapes remain versioned separately.
 - Local calendar schedules with IANA timezones, ISO weekdays, explicit DST behavior, and `skip`/`once`
@@ -17,7 +27,7 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
 - Bounded recall from each bot's local memory scope, integrity-checked records, durable write receipts
   in final envelope data, and compatibility reads for legacy memory filenames. Crystal/ECF remains a
   separate integration; local receipts do not claim an external acknowledgment.
-- All 23 v2 agent, run, bot, event, and group operations have closed SDK contracts and an authenticated
+- V2 agent, run, bot, event, group and resource operations have closed SDK contracts and an authenticated
   host adapter. Registration stays explicit; direct target calls cannot substitute for SDK gate admission.
 - Paused bot configuration updates, cooperative stop, and bounded installed-skill guidance with
   applied-skill receipts. Updating or stopping a bot never implicitly resumes it.

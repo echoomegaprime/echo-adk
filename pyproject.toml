@@ -33,6 +33,10 @@ dev = ["pytest>=8", "ruff>=0.17,<0.18"]
 sdk-host = ["fastapi==0.162.2", "httpx==0.28.1", "uvicorn==0.54.0"]
 # IANA data for calendar workers on Windows or images without system tzdata.
 calendar = ["tzdata==2026.6"]
+# Opt-in per-bot headless Chromium runtime; install Chromium separately.
+browser = ["playwright==1.62.0"]
+# Encrypted, host-held OAuth grants. The core still imports without this extra.
+connections = ["cryptography>=46,<47"]
 
 [project.urls]
 Homepage = "https://github.com/echoomegaprime/echo-adk"

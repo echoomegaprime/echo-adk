@@ -9,6 +9,7 @@ import pytest
 from echo_adk.api.server import BackgroundServer
 from echo_adk.api.service import AdkService
 from echo_adk.sdk.operations import OPERATIONS, InvalidParams, SdkOperations, operation_catalog, validate
+from echo_adk.sdk.workspace import operations as workspace_operations
 from tests.fakes import FakeBroker, ScriptedModel, final_action
 
 
@@ -47,7 +48,7 @@ def call(adapter, operation, params):
     return result.body["data"]
 
 
-def test_every_operation_projects_to_the_real_v2_surface(adapter):
+def test_core_management_operations_project_to_the_real_v2_surface(adapter):
     seen = set()
 
     def invoke(operation, params):
@@ -88,7 +89,7 @@ def test_every_operation_projects_to_the_real_v2_surface(adapter):
     group = invoke("group.create", {"name": "Review", "bots": members, "prompt": "Compare the supplied evidence"})
     assert len(group["run_ids"]) == 2
     assert invoke("group.get", {"group_id": group["group_id"]})["status"] == "queued"
-    assert seen == set(OPERATIONS)
+    assert seen == set(OPERATIONS) - {op.name for op in workspace_operations()}
 
 
 def test_authorization_is_out_of_band_and_precedes_any_operation(adapter):
@@ -197,7 +198,7 @@ def test_no_remote_destination_credentials_or_path_override(origin):
 
 def test_catalog_is_complete_closed_and_detached_from_internal_schemas():
     catalog = operation_catalog()
-    assert len(catalog) == 23
+    assert len(catalog) == 53
     assert all(row["input_schema_json"]["additionalProperties"] is False for row in catalog)
     assert all(
         "command" not in row["input_schema_json"]["properties"] and "options" not in row["input_schema_json"]["properties"]

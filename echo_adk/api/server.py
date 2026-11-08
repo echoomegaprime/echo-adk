@@ -1,6 +1,6 @@
 """Loopback-only HTTP front for :class:`AdkService` (stdlib ``ThreadingHTTPServer``).
 
-Headless: no browser, no popups, structured logs on stderr. Every response is JSON with
+Headless workers, no popups, structured logs on stderr. Every response is JSON with
 ``Content-Type: application/json``; errors are ``{error, message}``.
 """
 
@@ -55,6 +55,37 @@ V2_ROUTES: list[Route] = [
     ("POST", re.compile(rf"^/bots/{ID}/events$"), "bot_event"),
     ("PUT", re.compile(rf"^/bots/{ID}$"), "update_bot"),
     ("POST", re.compile(rf"^/bots/{ID}/stop$"), "stop_bot"),
+    ("GET", re.compile(r"^/bots/marketplace$"), "workspace_marketplace"),
+    ("POST", re.compile(r"^/bots/connections/callback$"), "workspace_callback"),
+    ("GET", re.compile(r"^/bots/templates$"), "workspace_team_templates"),
+    ("GET", re.compile(r"^/bots/templates/get$"), "workspace_team_template"),
+    ("POST", re.compile(r"^/bots/export$"), "workspace_team_export"),
+    ("POST", re.compile(r"^/bots/import/preview$"), "workspace_team_preview"),
+    ("POST", re.compile(r"^/bots/import$"), "workspace_team_import"),
+    ("GET", re.compile(r"^/bots/imports$"), "workspace_team_imports"),
+    ("POST", re.compile(r"^/bots/imports/inspect$"), "workspace_team_inspect"),
+    ("POST", re.compile(r"^/bots/imports/recover$"), "workspace_team_recover"),
+    ("GET", re.compile(rf"^/bots/{ID}/browser$"), "workspace_browser_status"),
+    ("POST", re.compile(rf"^/bots/{ID}/browser/actions$"), "workspace_browser_act"),
+    ("POST", re.compile(rf"^/bots/{ID}/browser/close$"), "workspace_browser_close"),
+    ("POST", re.compile(rf"^/bots/{ID}/browser/reset$"), "workspace_browser_reset"),
+    ("GET", re.compile(rf"^/bots/{ID}/browser/artifacts$"), "workspace_browser_artifact"),
+    ("GET", re.compile(rf"^/bots/{ID}/connections$"), "workspace_connection_list"),
+    ("POST", re.compile(rf"^/bots/{ID}/connections/get$"), "workspace_connection_get"),
+    ("POST", re.compile(rf"^/bots/{ID}/connections/authorize$"), "workspace_connection_authorize"),
+    ("POST", re.compile(rf"^/bots/{ID}/connections/invoke$"), "workspace_connection_invoke"),
+    ("POST", re.compile(rf"^/bots/{ID}/connections/refresh$"), "workspace_connection_refresh"),
+    ("POST", re.compile(rf"^/bots/{ID}/connections/disconnect$"), "workspace_connection_disconnect"),
+    ("GET", re.compile(rf"^/bots/{ID}/subscriptions$"), "workspace_subscription_list"),
+    ("POST", re.compile(rf"^/bots/{ID}/subscriptions$"), "workspace_subscription_create"),
+    ("POST", re.compile(rf"^/bots/{ID}/subscriptions/enable$"), "workspace_subscription_enable"),
+    ("POST", re.compile(rf"^/bots/{ID}/subscriptions/disable$"), "workspace_subscription_disable"),
+    ("POST", re.compile(rf"^/bots/{ID}/subscriptions/delete$"), "workspace_subscription_delete"),
+    ("POST", re.compile(rf"^/bots/{ID}/subscriptions/poll$"), "workspace_subscription_poll"),
+    ("GET", re.compile(rf"^/bots/{ID}/memory$"), "workspace_memory_read"),
+    ("PUT", re.compile(rf"^/bots/{ID}/memory$"), "workspace_memory_edit"),
+    ("GET", re.compile(rf"^/bots/{ID}/memory/revisions$"), "workspace_memory_revisions"),
+    ("POST", re.compile(rf"^/bots/{ID}/memory/restore$"), "workspace_memory_restore"),
 ]
 
 
@@ -161,7 +192,8 @@ class Handler(BaseHTTPRequestHandler):
                 if verb != method:
                     continue
                 body = self._read_json() if method in ("POST", "PUT", "DELETE") else None
-                status, payload = self._handle(service, name, match.groupdict(), query, body, contract_version=contract_version)
+                with service.workspace.admission():
+                    status, payload = self._handle(service, name, match.groupdict(), query, body, contract_version=contract_version)
                 self._send(status, payload)
                 return
             if matched_path:
@@ -199,6 +231,10 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(409, "invalid", "This bot schedule requires the v2 API; upgrade this client")
             return {key: value for key, value in bot.items() if key not in ("next_run_at", "last_scheduled_at")}
 
+        if name.startswith("workspace_"):
+            if any(len(values) != 1 for values in query.values()):
+                raise ApiError(400, "invalid", "Duplicate query parameters are refused")
+            return 200, service.workspace.dispatch(name, params.get("id"), body, {key: values[0] for key, values in query.items()})
         if name == "health":
             if contract_version == 2:
                 return 200, {
@@ -210,11 +246,18 @@ class Handler(BaseHTTPRequestHandler):
                         "memory_recall": True,
                         "bot_editing": True,
                         "bot_stopping": True,
+                        "extended_schedules": True,
+                        "bot_workspaces": True,
+                        "oauth_marketplace": True,
+                        "editable_memory": True,
+                        "portable_teams": True,
+                        "connection_events": True,
                     },
                     "budgets": service.budget_health(),
                     "connections": {
                         "memory": {"provider": "local", "recall": True, "durable": True, "shared": False},
-                        "browser": {"available": False, "reason": "No isolated browser provider is configured"},
+                        "browser": service.workspace.browser.health(),
+                        "oauth": {"configured": service.workspace.connections.catalog()["configured"], "per_bot": True},
                         "skills": {
                             "configured": service.skill_library is not None,
                             "provider": "installed",
@@ -258,7 +301,12 @@ class Handler(BaseHTTPRequestHandler):
         if name == "stop_bot":
             if body != {}:
                 raise ApiError(400, "invalid", "stop takes no fields")
-            return 200, service.bots.stop_bot(params["id"])
+            result = service.bots.stop_bot(params["id"])
+            try:
+                result["browser"] = service.workspace.browser.close(params["id"])
+            except Exception:
+                result["browser"] = {"status": "unknown", "message": "Browser close could not be verified"}
+            return 200, result
         if name == "resume_bot":
             bot_response(service.bots.get_bot(params["id"]))  # check version before mutation
             return 200, bot_response(service.bots.resume(params["id"]))
@@ -266,7 +314,8 @@ class Handler(BaseHTTPRequestHandler):
             bot_response(service.bots.get_bot(params["id"]))
             return 200, bot_response(service.bots.pause(params["id"]))
         if name == "delete_bot":
-            return 200, service.bots.delete(params["id"])
+            result = service.bots.delete(params["id"])
+            return 200, result if contract_version == 2 else {key: result[key] for key in ("bot_id", "deleted")}
         if name == "message_bot":
             return 202, service.message_bot(params["id"], body)
         if name == "bot_event":

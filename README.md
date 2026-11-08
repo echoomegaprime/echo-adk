@@ -18,7 +18,7 @@ memory, and artifact-service integration remain separate delivery gates in `docs
 ```bash
 git clone https://github.com/echoomegaprime/echo-adk
 cd echo-adk
-python -m pip install -e ".[dev,sdk-host,calendar]" # complete offline test dependencies; Google ADK is separate
+python -m pip install -e ".[dev,sdk-host,calendar,connections]" # offline test dependencies; browser and Google ADK are separate
 python -m pytest -q                    # offline fixtures, no external provider credentials
 ```
 
@@ -156,8 +156,10 @@ holds survive midnight, and uncertain interrupted costs are reported separately.
 its local state but retains aggregate service charges and previously shared group transcript records.
 
 Local memory recall is bounded, redacted, and treated as untrusted history. Successful final envelopes
-include a durable local memory receipt. This is not a Crystal/ECF acknowledgment. No isolated browser
-provider or per-bot OS sandbox is configured; v2 health reports the browser as unavailable. Implementations
+include a durable local memory receipt. This is not a Crystal/ECF acknowledgment. Optional browser
+process/profile isolation, per-bot OAuth connections, app-event watches, editable notes and portable
+teams are documented in [`docs/BOT_WORKSPACES.md`](docs/BOT_WORKSPACES.md). Browser and provider
+availability reflects actual host configuration and consent; no per-bot OS sandbox is claimed. Implementations
 are in `echo_adk/api/{server,service,store,budgets}.py`, `echo_adk/bots/{manager,schedules,triggers}.py`, and
 `echo_adk/core/{runner,ledger}.py`.
 
@@ -178,7 +180,8 @@ its existing secret store; ADK does not retrieve credential tables, mint keys, g
 TOTP/approval challenges. A missing signer is reported as unavailable.
 
 [`echo_adk/sdk/README.md`](echo_adk/sdk/README.md) describes the concrete inbound SDK host adapter for
-all 23 v2 operations, its strict schemas, single-use gate admission, and proposed registrations.
+all 53 v2 management/resource operations, strict schemas, single-use gate admission, and proposed registrations.
+OAuth callback code/state use a dedicated owner protocol endpoint and are excluded from the general SDK gate.
 The registration manifest is reviewable source data. Installing this package does not register or
 activate it in a live SDK catalog. Existing legacy `echo.bot.*` notification capabilities are separate.
 
@@ -228,7 +231,7 @@ budget admission, and memory recall. Focused coverage lives in `tests/test_contr
 `tests/test_budget_reservations.py`, `tests/test_bot_automation.py`, `tests/test_bot_schedules.py`,
 `tests/test_store_inbox.py`, and `tests/test_memory_recall.py`.
 
-The live gate/model path, Crystal/ECF and artifact services, browser isolation, evaluation harness,
+The live gate/model path, Crystal/ECF and artifact services, OS/container isolation, evaluation harness,
 FORGE deployment certification, and rollback drill remain separate work in [`docs/SLICES.md`](docs/SLICES.md).
 Before downgrading, settle held reservations and use a consistent backup or reviewed state migration;
 older binaries do not maintain the new accounting/inbox projections or discover new memory filenames.

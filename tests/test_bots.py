@@ -106,7 +106,10 @@ def test_delete_leaves_nothing_behind(svc, tmp_path):
     svc.store.add_spend(f"bot:{bot_id}", 0.0)
     state = tmp_path / "state"
     assert (state / "ledger" / f"{run_id}.jsonl").exists() and (state / "proofs" / f"{run_id}.json").exists()
-    assert svc.bots.delete(bot_id) == {"bot_id": bot_id, "deleted": True}
+    removed = svc.bots.delete(bot_id)
+    assert removed["bot_id"] == bot_id and removed["deleted"] is True
+    assert removed["cleanup"]["memory_deleted"] is True
+    assert removed["cleanup"]["connections"]["connections"] == []
     assert svc.store.get_bot(bot_id) is None and svc.store.get_run(run_id) is None
     assert svc.store.list_messages(bot_id, limit=1000) == [] and svc.store.list_runs(bot_id=bot_id) == []
     assert svc.store.spend_today(f"bot:{bot_id}") == 0.0 and svc.memory.read(f"bot:{bot_id}") == []

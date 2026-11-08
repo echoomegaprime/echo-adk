@@ -67,17 +67,24 @@ V1 `GET /bots/{id}/messages` returns the existing message fields and omits the n
     "idempotent_events": true,
     "memory_recall": true,
     "bot_editing": true,
-    "bot_stopping": true
+    "bot_stopping": true,
+    "extended_schedules": true,
+    "bot_workspaces": true,
+    "oauth_marketplace": true,
+    "editable_memory": true,
+    "portable_teams": true,
+    "connection_events": true
   },
   "connections": {
     "memory": {"provider": "local", "recall": true, "durable": true, "shared": false},
-    "browser": {"available": false, "reason": "No isolated browser provider is configured"},
+    "browser": {"available": false, "isolation": "process_and_profile", "os_isolation": false},
+    "oauth": {"configured": false, "per_bot": true},
     "skills": {"configured": false, "provider": "installed", "scripts_execute_automatically": false}
   }
 }
 ```
 
-The response also contains `budgets`, described in section 6. These fields identify implemented local capabilities. `ok: true` means the API is responding; it is not evidence that a provider is logged in, the SDK gate is reachable, Crystal/ECF acknowledged a write, or deployment certification passed. The browser connection is explicitly unavailable. No per-bot browser or OS sandbox is created by this API.
+The response also contains `budgets`, described in section 6. These fields identify implemented local capabilities. `ok: true` means the API is responding; it is not evidence that a provider is logged in, the SDK gate is reachable, Crystal/ECF acknowledged a write, or deployment certification passed. Browser health is a nonblocking cached runtime observation. The per-bot browser status route performs a bounded real probe when required; dependency presence alone does not establish availability. Browser profiles/processes share the service OS account.
 
 The skill connection reports whether `ECHO_ADK_SKILLS_DIR` points to an installed skill library. Explicit nonempty bot `plugins` require that library and validated names; an unconfigured library returns 503 before bot creation or editing. Existing agent `skills` labels remain descriptive metadata when no library is configured, and the first model envelope reports `skill_context.provider: "unconfigured"` with `applied: []`. When configured, the runner loads the agent's skills plus the bot's plugins from that host-owned root, checks names and path containment, redacts the guidance, bounds the combined context to 64,000 characters, and records the applied names and SHA-256 in `data.skill_context`. Missing or oversized installed guidance fails before model invocation. Queued bot work retains its selected skill names. Guidance does not grant tools or automatically execute bundled scripts.
 
@@ -253,6 +260,10 @@ Implementation: `echo-adk/echo_adk/api/service.py` (`_recover_incomplete_runs`, 
 
 ## 9. Boundaries and remaining delivery gates
 
-This contract provides local schedules, event admission, per-turn leases, budget reservations, scoped local recall, and inspectable execution records. It does not supply per-bot browser/OS isolation, hosted webhook authentication, Crystal/ECF search/capture acknowledgments, or MinIO/ESH artifact services. A provider login or shared machine is not proof of a separate bot sandbox.
+This contract provides local schedules, event admission, per-turn leases, budgets, scoped recall, editable notes, browser process/profile isolation, per-bot OAuth connections, authenticated polling subscriptions and portable teams. It does not supply OS/container isolation, hosted webhook authentication, Crystal/ECF search/capture acknowledgments, or MinIO/ESH artifact services. Provider credentials and actual consent are configured separately. Resource APIs are specified in `docs/BOT_WORKSPACES.md`; OAuth callback code/state bypass general SDK logging through a dedicated owner-only protocol endpoint.
 
 The live SDK gate/model path, installed FORGE unit, CertForge verdict, Harbormaster manifest, and rollback drill require separate deployment evidence. Evaluation against another bot product also requires a defined task set and measured results; this API document makes no comparative superiority claim. See the current implementation and open work in `echo-adk/docs/SLICES.md`, deployment instructions in `echo-adk/deploy/README.md`, and the unchanged security rules in `echo-adk/SECURITY.md`.
+
+## 10. Per-bot resource extension
+
+The v2 resource extension is documented in `echo-adk/docs/BOT_WORKSPACES.md` (mirrored at `echo-cli/docs/echo-code/ECHO_BOT_WORKSPACES.md`). It adds browser, OAuth, polling, editable memory and team portability routes. Core v1 shapes remain frozen; v2 deletion additionally reports resource cleanup and provider revocation receipts. Extended schedule shapes are specified in `echo-adk/docs/BOT_SCHEDULES.md`. Imported bots remain paused with empty leases. New provider watches start disabled.

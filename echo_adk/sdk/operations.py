@@ -63,6 +63,32 @@ SCHEDULE = nullable(
                 },
                 ("at", "tz", "weekdays"),
             ),
+            obj(
+                {
+                    "once_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T([01][0-9]|2[0-3]):[0-5][0-9]$"},
+                    "tz": {"type": "string", "minLength": 1, "maxLength": 100},
+                    "missed": MISSED,
+                },
+                ("once_at", "tz"),
+            ),
+            obj(
+                {
+                    "at": {"type": "string", "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"},
+                    "tz": {"type": "string", "minLength": 1, "maxLength": 100},
+                    "monthdays": array(integer(1, 31), 31, minimum=1, unique=True),
+                    "months": array(integer(1, 12), 12, minimum=1, unique=True),
+                    "missed": MISSED,
+                },
+                ("at", "tz", "monthdays"),
+            ),
+            obj(
+                {
+                    "cron": {"type": "string", "minLength": 9, "maxLength": 256},
+                    "tz": {"type": "string", "minLength": 1, "maxLength": 100},
+                    "missed": MISSED,
+                },
+                ("cron", "tz"),
+            ),
         ]
     }
 )
@@ -287,6 +313,9 @@ _ROWS = [
         description="Read a group's actual lifecycle and shared transcript.",
     ),
 ]
+from .workspace import operations as workspace_operations  # noqa: E402
+
+_ROWS.extend(workspace_operations())
 OPERATIONS = {operation.name: operation for operation in _ROWS}
 
 
@@ -307,6 +336,11 @@ def operation_catalog() -> list[dict[str, Any]]:
 
 def valid_payload(operation: str, params: Mapping[str, Any], payload: Mapping[str, Any]) -> bool:
     """A successful transport must still carry the actual operation's receipt."""
+    from .workspace import valid_payload as workspace_payload
+
+    workspace_result = workspace_payload(operation, dict(params), dict(payload))
+    if workspace_result is not None:
+        return workspace_result
 
     def hex_id(value: Any) -> bool:
         return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{32}", value) is not None
@@ -454,7 +488,7 @@ class SdkOperations:
     supplies this callback from the real SDK auth integration.
     """
 
-    def __init__(self, worker_origin: str, *, authorize: Callable[[Operation, Any], bool], timeout_s: float = 15) -> None:
+    def __init__(self, worker_origin: str, *, authorize: Callable[[Operation, Any], bool], timeout_s: float = 30) -> None:
         parsed = urllib.parse.urlsplit(worker_origin)
         try:
             port = parsed.port

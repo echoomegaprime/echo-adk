@@ -73,7 +73,7 @@ def check_sdk_contract() -> None:
     manifest = proposed_manifest("http://127.0.0.1:8000")
     specs = manifest["capabilities"]
     require(manifest["registration_status"] == "proposed_not_registered", "manifest claims live registration")
-    require(len(specs) == len(OPERATIONS) == 23 and len({spec["id"] for spec in specs}) == 23, "SDK operation map is incomplete")
+    require(len(specs) == len(OPERATIONS) == 53 and len({spec["id"] for spec in specs}) == 53, "SDK operation map is incomplete")
     for spec in specs:
         expected_scope = "echobots.manage" if spec["id"].startswith("echo.echobots.") else "adk.manage"
         require(spec["danger_tier"] == 2 and spec["required_scope"] == expected_scope, "SDK control scope or risk tier changed")

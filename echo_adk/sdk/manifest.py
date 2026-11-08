@@ -18,6 +18,9 @@ PROPOSED_IDS = {
     else "echo.adk." + name.replace(".", "_")
     for name in OPERATIONS
 }
+# Scopes limit which control plane an owner may use; Tier2 independently keeps
+# the real gate's HMAC/policy checks and the child runner's signed-grant boundary.
+REQUIRED_SCOPES = {name: "echobots.manage" if name.startswith(("bot.", "group.")) else "adk.manage" for name in OPERATIONS}
 OUTPUT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -73,7 +76,7 @@ def proposed_manifest(gate_origin: str) -> dict[str, Any]:
                 "args_mode": "json_body",
                 "input_schema_json": copy.deepcopy(op.schema),
                 "output_schema_json": copy.deepcopy(OUTPUT_SCHEMA),
-                "required_scope": "tier:2",
+                "required_scope": REQUIRED_SCOPES[op.name],
                 "danger_tier": 2,
                 "schema_version": 1,
                 "lifecycle_status": "active",

@@ -75,7 +75,8 @@ def check_sdk_contract() -> None:
     require(manifest["registration_status"] == "proposed_not_registered", "manifest claims live registration")
     require(len(specs) == len(OPERATIONS) == 23 and len({spec["id"] for spec in specs}) == 23, "SDK operation map is incomplete")
     for spec in specs:
-        require(spec["danger_tier"] == 2 and spec["required_scope"] == "tier:2", "SDK control authority was widened")
+        expected_scope = "echobots.manage" if spec["id"].startswith("echo.echobots.") else "adk.manage"
+        require(spec["danger_tier"] == 2 and spec["required_scope"] == expected_scope, "SDK control scope or risk tier changed")
         require(spec["input_schema_json"].get("additionalProperties") is False, "SDK input schema is open")
         require(spec["output_schema_json"].get("x-echo-enforce-output-contract") is True, "SDK output checking was disabled")
     try:

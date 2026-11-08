@@ -10,7 +10,10 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import sys
+import time
+from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
 import httpx
@@ -41,10 +44,26 @@ class HostHelpers:
         self.hook_calls = 0
         self.late_task = None
         self.release_late = None
+        self.grants = []
+        # Models the result of the real gate's independent HMAC verifier. This
+        # fixture does not implement or claim live cryptographic verification.
+        self.hmac_decision = "valid"
         self.capabilities = {cap["id"]: cap for cap in proposed_manifest("http://127.0.0.1:8000")["capabilities"]}
 
     def register_pre_dispatch_hook(self, hook):
         self.hooks.append(hook)
+
+    @staticmethod
+    def key_scopes(key):
+        if key in ("weak-key", "task-key", "other-task-key"):
+            return ["tier:1"]
+        if key == "adk-key":
+            return ["adk.manage"]
+        if key == "bots-key":
+            return ["echobots.manage"]
+        if key == "tier2-only-key":
+            return ["tier:2"]
+        return ["tier:1", "adk.manage", "echobots.manage"]
 
     async def _authenticate(self, key):
         self.auth_calls.append(key)
@@ -54,9 +73,9 @@ class HostHelpers:
         if key == "unavailable-key":
             raise RuntimeError("private authentication database details")
         return {
-            "owner": "different-owner" if key == "other-key" else "owner@example.test",
+            "owner": "different-owner" if key in ("other-key", "other-task-key") else "owner@example.test",
             "active": key != "inactive-key",
-            "scopes": ["tier:1" if key == "weak-key" else "tier:2"],
+            "scopes": self.key_scopes(key),
         }
 
 
@@ -76,6 +95,26 @@ def create_host(native):
             return JSONResponse({"error": "gate_refused"}, status_code=403)
         operation = data["operation"]
         cap = helpers.capabilities[PROPOSED_IDS[operation]]
+        # Source-backed ordering: effective static OR server-side task scope,
+        # then independent Tier2 HMAC, then registered pre-dispatch hooks.
+        # The request's context names a grant; it cannot supply its contents.
+        context = data.get("context", {})
+        granted = cap["required_scope"] in helpers.key_scopes(request.headers.get("X-Echo-API-Key", ""))
+        if not granted and isinstance(context, dict):
+            granted = any(
+                grant["active"] is True
+                and grant["expires"] > time.monotonic()
+                and grant["actor"] == context.get("session_actor_id")
+                and grant["task"] == context.get("task_id")
+                and grant["scope"] == cap["required_scope"]
+                for grant in helpers.grants
+            )
+        if not granted:
+            return JSONResponse({"ok": False, "error": "scope_forbidden", "outcome": "not_started"}, status_code=403)
+        if cap["danger_tier"] >= 2 and helpers.hmac_decision != "valid":
+            return JSONResponse(
+                {"error": "hmac_" + helpers.hmac_decision}, status_code=423 if helpers.hmac_decision == "missing" else 401
+            )
         envelope = SimpleNamespace(params=data.get("params", {}))
         for hook in helpers.hooks:
             helpers.hook_calls += 1
@@ -103,6 +142,8 @@ def create_host(native):
             headers.append(headers[0])
         if data.get("expire") and _FRAME.get():
             _FRAME.get().armed_at -= 31
+        if "replace_admitted_scope" in data and _FRAME.get():
+            _FRAME.get().admitted_scope = data["replace_admitted_scope"]
         if data.get("later_refusal"):
             if data.get("late_task"):
                 helpers.release_late = asyncio.Event()
@@ -126,7 +167,6 @@ def create_host(native):
         worker_origin=native.origin,
         sdk=helpers,
         projector=project,
-        scope_match=lambda scopes, required: required in scopes,
     )
     return app, helpers
 
@@ -143,11 +183,14 @@ def invoke(app, operation, params, *, key="owner-key", **flags):
 
 def test_proposed_manifest_is_complete_tier_two_and_uses_real_flat_host_contract():
     manifest = proposed_manifest("http://127.0.0.1:8000")
+    committed = Path(__file__).resolve().parents[1] / "echo_adk" / "sdk" / "capabilities.proposed.json"
+    assert json.loads(committed.read_text()) == manifest
     assert manifest["registration_status"] == "proposed_not_registered"
     caps = manifest["capabilities"]
     assert len(caps) == len(OPERATIONS) == 23
     assert len({cap["id"] for cap in caps}) == 23
-    assert all(cap["danger_tier"] == 2 and cap["required_scope"] == "tier:2" for cap in caps)
+    assert all(cap["danger_tier"] == 2 for cap in caps)
+    assert all(cap["required_scope"] == ("echobots.manage" if cap["id"].startswith("echo.echobots.") else "adk.manage") for cap in caps)
     assert all(cap["handler_kind"] == "router" and cap["target_method"] == "POST" for cap in caps)
     assert all(cap["output_schema_json"]["x-echo-enforce-output-contract"] is True for cap in caps)
     assert all(cap["input_schema_json"]["additionalProperties"] is False for cap in caps)
@@ -167,6 +210,98 @@ def test_installed_host_accepts_only_actual_post_gate_asgi_admission(adapter):
     assert response.json()["untrusted"] is True
     assert adapter[2].get_agent("sdk-worker").name == "sdk-worker"
     assert helpers.hook_calls == 1 and helpers.auth_calls == ["owner-key"]
+
+
+def task_grant(helpers, scope="adk.manage", **changes):
+    grant = {"actor": "approved-worker", "task": "approved-task", "scope": scope, "active": True, "expires": time.monotonic() + 60}
+    grant.update(changes)
+    helpers.grants.append(grant)
+    return {"session_actor_id": "approved-worker", "task_id": "approved-task"}
+
+
+def test_legitimate_gate_task_grant_does_not_require_a_permanent_key_scope(adapter):
+    app, helpers = create_host(adapter[0])
+    context = task_grant(helpers)
+    response = invoke(app, "agent.create", definition(), key="task-key", context=context)
+    assert response.status_code == 201 and response.json()["ok"] is True
+    assert helpers.key_scopes("task-key") == ["tier:1"]
+    assert helpers.hook_calls == 1 and helpers.auth_calls == ["task-key"]
+    assert "sdk-worker" in adapter[2].agents
+
+
+@pytest.mark.parametrize(
+    ("key", "allowed", "refused"),
+    [("adk-key", "agent.list", "bot.list"), ("bots-key", "bot.list", "agent.list")],
+)
+def test_dedicated_static_scope_is_limited_to_its_own_namespace(adapter, key, allowed, refused):
+    app, helpers = create_host(adapter[0])
+    rejected = invoke(app, refused, {}, key=key)
+    assert rejected.status_code == 403 and helpers.hook_calls == 0
+    accepted = invoke(app, allowed, {}, key=key)
+    assert accepted.status_code == 200 and accepted.json()["ok"] is True
+    assert helpers.hook_calls == 1 and helpers.auth_calls == [key]
+
+
+def test_task_grant_cannot_cross_namespace_or_owner(adapter):
+    app, helpers = create_host(adapter[0])
+    context = task_grant(helpers, scope="echobots.manage")
+    refused = invoke(app, "agent.create", definition(), key="task-key", context=context)
+    assert refused.status_code == 403 and helpers.hook_calls == 0
+    wrong_owner = invoke(app, "bot.list", {}, key="other-task-key", context=context)
+    assert wrong_owner.status_code == 403 and wrong_owner.json()["error"] == "denied"
+    accepted = invoke(app, "bot.list", {}, key="task-key", context=context)
+    assert accepted.status_code == 200 and accepted.json()["ok"] is True
+    assert "sdk-worker" not in adapter[2].agents
+
+
+@pytest.mark.parametrize(
+    "change",
+    [{"active": False}, {"expires": 0}, {"actor": "different-worker"}, {"task": "different-task"}, {"scope": "echobots.manage"}],
+)
+def test_revoked_expired_or_mismatched_task_grant_never_arms_admission(adapter, change):
+    app, helpers = create_host(adapter[0])
+    context = task_grant(helpers, **change)
+    response = invoke(app, "agent.create", definition(), key="task-key", context=context)
+    assert response.status_code == 403 and response.json()["error"] == "scope_forbidden"
+    assert helpers.hook_calls == 0 and not helpers.auth_calls
+    assert "sdk-worker" not in adapter[2].agents
+
+
+def test_request_context_cannot_supply_its_own_grant_or_admitted_scope(adapter):
+    app, helpers = create_host(adapter[0])
+    response = invoke(
+        app,
+        "agent.create",
+        definition(),
+        key="weak-key",
+        context={
+            "session_actor_id": "approved-worker",
+            "task_id": "approved-task",
+            "scopes": ["adk.manage", "tier:2"],
+            "admitted_scope": "adk.manage",
+            "grant": {"active": True, "scope": "adk.manage", "owner": "owner@example.test"},
+        },
+    )
+    assert response.status_code == 403 and helpers.hook_calls == 0
+    assert not helpers.auth_calls and "sdk-worker" not in adapter[2].agents
+
+
+def test_global_tier_label_alone_does_not_cover_named_management_scope(adapter):
+    app, helpers = create_host(adapter[0])
+    response = invoke(app, "agent.create", definition(), key="tier2-only-key")
+    assert response.status_code == 403 and helpers.hook_calls == 0
+    assert not helpers.auth_calls and "sdk-worker" not in adapter[2].agents
+
+
+@pytest.mark.parametrize(("decision", "status"), [("missing", 423), ("invalid", 401)])
+def test_valid_task_scope_does_not_bypass_independent_gate_hmac_refusal(adapter, decision, status):
+    app, helpers = create_host(adapter[0])
+    context = task_grant(helpers)
+    helpers.hmac_decision = decision
+    response = invoke(app, "agent.create", definition(), key="task-key", context=context)
+    assert response.status_code == status and response.json()["error"] == "hmac_" + decision
+    assert helpers.hook_calls == 0 and not helpers.auth_calls
+    assert "sdk-worker" not in adapter[2].agents
 
 
 def test_direct_target_with_owner_key_and_forged_identity_headers_cannot_bypass_gate(adapter):
@@ -193,9 +328,9 @@ def test_direct_target_with_owner_key_and_forged_identity_headers_cannot_bypass_
 
 @pytest.mark.parametrize(
     ("key", "status"),
-    [("other-key", 403), ("weak-key", 403), ("inactive-key", 403), ("revoked-key", 401), ("unavailable-key", 503)],
+    [("other-key", 403), ("inactive-key", 403), ("revoked-key", 401), ("unavailable-key", 503)],
 )
-def test_host_reauthenticates_owner_scope_and_key_activity_after_gate(adapter, key, status):
+def test_host_reauthenticates_owner_and_key_activity_after_gate(adapter, key, status):
     app, _ = create_host(adapter[0])
     response = invoke(app, "agent.create", definition(), key=key)
     assert response.status_code == status and response.json()["ok"] is False
@@ -208,6 +343,7 @@ def test_host_reauthenticates_owner_scope_and_key_activity_after_gate(adapter, k
     [
         {"danger_tier": 1},
         {"required_scope": "tier:1"},
+        {"required_scope": "echobots.manage"},
         {"handler_kind": "http"},
         {"target_method": "GET"},
         {"args_mode": "query"},
@@ -232,6 +368,7 @@ def test_registration_mismatch_or_remote_transport_never_arms_proof(adapter, cha
         {"replace_capability": PROPOSED_IDS["agent.replace"]},
         {"duplicate_key": True},
         {"expire": True},
+        {"replace_admitted_scope": "echobots.manage"},
     ],
 )
 def test_admission_is_bound_to_exact_operation_params_key_and_time(adapter, flags):
@@ -321,7 +458,6 @@ def test_factory_mounts_the_existing_sdk_main_app_using_actual_helper_import_con
     monkeypatch.setitem(sys.modules, "routers", routers)
     monkeypatch.setitem(sys.modules, "routers.sdk_invoke", sdk)
     monkeypatch.setitem(sys.modules, "routers._dispatcher_projection", SimpleNamespace(project_envelope=project))
-    monkeypatch.setitem(sys.modules, "routers._scope_match", SimpleNamespace(scope_match=lambda scopes, needed: needed in scopes))
     monkeypatch.setenv("ECHO_ADK_OWNER", "owner@example.test")
     monkeypatch.setenv("ECHO_ADK_WORKER_ORIGIN", adapter[0].origin)
     assert create_app() is app and app.state.echo_adk_sdk_installed is True

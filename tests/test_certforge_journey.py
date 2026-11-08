@@ -10,6 +10,7 @@ import pytest
 
 from echo_adk.bots.manager import BotManager
 from echo_adk.core.policy import Decision, Policy
+from echo_adk.sdk import manifest as sdk_manifest
 
 ROOT = Path(__file__).resolve().parents[1]
 JOURNEY = ROOT / "scripts" / "certforge_journey.py"
@@ -52,6 +53,21 @@ def test_journey_rejects_a_policy_that_silently_allows_missing_authority(monkeyp
     monkeypatch.setattr(Policy, "evaluate", lambda *args, **kwargs: Decision("allowed", 0, "broken policy"))
     with pytest.raises(journey["JourneyFailure"], match="missing lease"):
         journey["check_policy"]()
+
+
+@pytest.mark.parametrize("change", [{"required_scope": "tier:2"}, {"required_scope": "echobots.manage"}, {"danger_tier": 1}])
+def test_journey_rejects_changed_management_scope_or_lowered_risk_tier(monkeypatch, change):
+    journey = load_journey()
+    generate = sdk_manifest.proposed_manifest
+
+    def changed_manifest(origin):
+        value = generate(origin)
+        value["capabilities"][0].update(change)
+        return value
+
+    monkeypatch.setattr(sdk_manifest, "proposed_manifest", changed_manifest)
+    with pytest.raises(journey["JourneyFailure"], match="scope or risk tier"):
+        journey["check_sdk_contract"]()
 
 
 def test_journey_rejects_a_duplicate_event_with_a_different_run(monkeypatch, tmp_path):

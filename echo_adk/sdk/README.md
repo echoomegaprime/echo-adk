@@ -49,22 +49,38 @@ deployment configuration. Run the factory in the existing, configured SDK host.
 
 ## Admission boundary
 
-Every proposed operation is classified Tier 2 with `required_scope: tier:2`.
-This includes the control plane's private reads. Creation and execution controls
-therefore cannot be selected as automatic tier 0/1 child-worker capabilities to
-bypass the parent delegation limit. Host-owned chat management tools keep their
+Every proposed operation remains classified Tier 2, including the control
+plane's private reads. Required scopes are limited to the relevant control plane:
+
+| Proposed namespace | Fixed required scope |
+| --- | --- |
+| `echo.adk.*` — health, agents and runs | `adk.manage` |
+| `echo.echobots.*` — bots and groups | `echobots.manage` |
+
+The caller needs the applicable scope through an actual key grant or an active,
+unexpired task grant that the SDK gate verifies. A broad static `tier:2` grant is
+not required by this adapter. The SDK independently requires HMAC for
+`danger_tier >= 2`; these named scopes do not lower that risk classification.
+Creation and execution controls remain outside automatic tier 0/1 child-worker
+approval, and the child runner still requires an exact capability allowlist,
+lease and Tier 2 `grant_ref`. Host-owned chat management tools retain their
 separate owner admission and bounded delegation rules.
 
 The SDK gate continues to perform its actual key, scope, HMAC, policy and other
 required checks. Only its pre-dispatch hook, which runs after those checks, can
-arm the adapter's per-invocation proof. The proof is bound to the exact registered
-capability, projected application parameters, and forwarded key. The target
+arm the adapter's per-invocation proof. The hook also checks that registration
+retains exactly Tier 2 and the fixed scope above. The proof is bound to that
+admitted scope, the exact capability, projected application parameters, and
+forwarded key. The target
 consumes it once before awaiting authentication or native worker I/O. The outer
 invocation revokes unused proofs in `finally`, including a copy inherited by a
 background task. Nested and concurrent invocations keep separate frames.
 
-The target then calls the real SDK `_authenticate` helper again, checks the exact
-configured owner, checks active key state, and applies the real scope matcher.
+The target then calls the real SDK `_authenticate` helper again and checks the
+exact configured owner and active key state. It uses the bound post-gate proof
+for effective scope admission, so a valid SDK task grant is not discarded just
+because that scope is absent from the key's permanent scope list. The adapter
+does not create grants or reinterpret claimed permissions in a request.
 `X-Commander-Email`, `X-Echo-Capability`, an owner API key on a direct target call,
 or a model-supplied `owner`/`scopes` field cannot substitute for gate admission.
 Credentials and authorization context are never application parameters.
@@ -96,6 +112,8 @@ Registration must use the real SDK registrar and its normal owner/Tier 2
 admission; do not use its `gen_router_stub` option. Before and after registration,
 verify each exact ID and schema using the real active catalog, then exercise the
 normal SDK gate. No registration or deployment is performed by these modules.
+Confirm that the registrar itself is active and admitted before submitting; a
+retained detail row does not establish an active capability lifecycle.
 
 | Operation | Proposed capability | Native route |
 | --- | --- | --- |
@@ -143,9 +161,12 @@ strict fields, typed budget/lifecycle errors, event receipts, redaction, bounded
 responses, refusal of redirects, and false-success responses.
 
 `tests/test_sdk_host.py` runs real FastAPI/httpx ASGI transport around the actual
-native HTTP server. It checks direct-call refusal, owner/key/scope rejection,
+native HTTP server. It checks dedicated static scopes, source-backed effective
+task-grant admission, revoked/expired/mismatched grant refusal, independent HMAC
+refusal before hooks, direct-call and owner/key/scope rejection,
 parameter/key/capability binding, one-use proofs, expiry, later-hook refusal,
 inherited-context revocation, nested/concurrent isolation and the factory import
-contract. The test SDK helpers model signatures verified from the real host; the
-tests do not claim that production HMAC admission, registration, deployment or
-live model/capability execution has occurred.
+contract. The test SDK helpers model server-side grant state and verifier
+decisions in the ordering verified from the real host. They do not claim live
+grant issuance or acceptance, production HMAC verification, registration,
+deployment or live model/capability execution.

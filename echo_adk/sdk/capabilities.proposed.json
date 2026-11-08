@@ -91,7 +91,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -185,7 +185,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -287,7 +287,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -504,7 +504,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -721,7 +721,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -823,7 +823,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -984,7 +984,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -1089,7 +1089,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -1190,7 +1190,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -1291,7 +1291,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "adk.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -1385,7 +1385,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -1626,7 +1626,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -1727,7 +1727,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -1966,7 +1966,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2067,7 +2067,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2168,7 +2168,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2269,7 +2269,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2370,7 +2370,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2477,7 +2477,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2587,7 +2587,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2704,7 +2704,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2823,7 +2823,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"
@@ -2924,7 +2924,7 @@
         ],
         "x-echo-enforce-output-contract": true
       },
-      "required_scope": "tier:2",
+      "required_scope": "echobots.manage",
       "danger_tier": 2,
       "schema_version": 1,
       "lifecycle_status": "active"

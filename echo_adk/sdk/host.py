@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 from ..api.server import is_loopback_host
-from .manifest import PROPOSED_IDS, ROUTE_PREFIX
+from .manifest import PROPOSED_IDS, REQUIRED_SCOPES, ROUTE_PREFIX
 from .operations import MAX_BYTES, OPERATIONS, InvalidParams, SdkOperations, failure, validate
 
 
@@ -39,6 +39,7 @@ def _key_digest(value: str) -> str:
 class InvocationFrame:
     principal: Optional[str]
     capability: Optional[str] = None
+    admitted_scope: Optional[str] = None
     params: Optional[str] = None
     armed_at: float = 0
     consumed: bool = False
@@ -77,7 +78,7 @@ class InvocationMiddleware:
             _FRAME.reset(token)
 
 
-def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projector: Any = None, scope_match: Any = None) -> Any:
+def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projector: Any = None) -> Any:
     """Mount on the SDK's actual app before startup; dependencies default to real host helpers.
 
     Injectable helper arguments support offline host-contract tests. They are
@@ -94,10 +95,9 @@ def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projec
         raise RuntimeError("Install the ADK SDK adapter before the SDK host starts serving requests")
     sdk = sdk or importlib.import_module("routers.sdk_invoke")
     projector = projector or importlib.import_module("routers._dispatcher_projection").project_envelope
-    scope_match = scope_match or importlib.import_module("routers._scope_match").scope_match
     authenticate = sdk._authenticate
     register = sdk.register_pre_dispatch_hook
-    if not all(callable(value) for value in (projector, scope_match, authenticate, register)):
+    if not all(callable(value) for value in (projector, authenticate, register)):
         raise RuntimeError("SDK host authentication/projection/hook contract is unavailable")
     authorized = object()
     operations = SdkOperations(worker_origin, authorize=lambda _operation, context: context is authorized)
@@ -116,7 +116,7 @@ def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projec
         # toward an unrelated route/process. Remote router targets cannot carry it.
         if (
             cap_row.get("danger_tier") != 2
-            or cap_row.get("required_scope") != "tier:2"
+            or cap_row.get("required_scope") != REQUIRED_SCOPES[operation]
             or cap_row.get("handler_kind") != "router"
             or cap_row.get("target_method") != "POST"
             or (cap_row.get("args_mode") or "json_body") != "json_body"
@@ -136,7 +136,12 @@ def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projec
             digest = _digest(params)
         except (InvalidParams, TypeError, ValueError, UnicodeError, RecursionError):
             return
-        frame.capability, frame.params, frame.armed_at = capability, digest, time.monotonic()
+        # The real gate calls this hook only after its effective scope decision
+        # (static key OR a live server-side task grant), independent Tier2 HMAC,
+        # and policy checks. Record that admitted scope; a request cannot supply
+        # this private frame or replace it with a context/owner/grant assertion.
+        frame.capability, frame.admitted_scope = capability, REQUIRED_SCOPES[operation]
+        frame.params, frame.armed_at = digest, time.monotonic()
 
     router = APIRouter()
 
@@ -156,6 +161,7 @@ def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projec
             or frame.closed
             or frame.consumed
             or frame.capability != PROPOSED_IDS[operation]
+            or frame.admitted_scope != REQUIRED_SCOPES[operation]
             or capability != frame.capability
             or not key
             or _key_digest(key) != frame.principal
@@ -184,13 +190,11 @@ def install(app: Any, *, owner: str, worker_origin: str, sdk: Any = None, projec
             return error(status, "denied" if status in (401, 403) else "unavailable", "SDK key authentication was refused")
         except Exception:
             return error(503, "unavailable", "SDK key authentication could not be verified")
-        if (
-            not isinstance(info, dict)
-            or info.get("active") is not True
-            or info.get("owner") != owner
-            or not scope_match(info.get("scopes", []), "tier:2")
-        ):
-            return error(403, "denied", "Verified SDK owner and tier:2 scope are required")
+        # Rechecking static scopes here would discard a legitimate task grant
+        # already verified by the gate. Effective scope is established only by
+        # the bound one-use admission above; key activity and owner are fresh.
+        if not isinstance(info, dict) or info.get("active") is not True or info.get("owner") != owner:
+            return error(403, "denied", "The verified active SDK owner is required")
         result = await asyncio.to_thread(operations.invoke, operation, params, context=authorized)
         return JSONResponse(result.body, status_code=result.status_code)
 

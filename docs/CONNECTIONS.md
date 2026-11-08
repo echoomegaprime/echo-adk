@@ -58,6 +58,15 @@ The referenced client-secret values are read only inside the host. No API accept
 
 Google may require consent-screen configuration, permitted test users, or verification for the chosen app and scope. GitHub's actual token response determines whether refresh is available. A successful local fixture test does not replace provider app registration or a real owner's consent.
 
+Each new Google connection explicitly requests the account chooser and consent with
+`prompt=select_account consent`. The owner can choose among signed-in accounts instead of
+the app silently relying on the browser's current Google account; no account email or
+`login_hint` is hardcoded. This applies when starting new consent, not to ordinary reads or
+refreshes of an admitted connection. Google still controls any required sign-in or presence
+step. Because provider consent settings are part of the existing configuration fingerprint,
+connections created with the earlier consent-only template require new consent after this
+template change; no existing token is automatically moved to another account.
+
 ## Owner flow and callable facade
 
 The API integration constructs `from_env(state_dir, require_bot, owner_id="prime-owner")`. `owner_id` is a server-side identity, not a request argument. `require_bot(bot_id)` must raise for an absent or inaccessible bot. The outer Prime owner session or an authenticated SDK host remains responsible for owner authentication; this library is not a login system.

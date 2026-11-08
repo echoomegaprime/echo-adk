@@ -636,14 +636,23 @@ def test_restart_keeps_encrypted_connections_and_refuses_unknown_inflight_claim(
         other.close()
 
 
-def test_builtin_templates_and_configured_environment_factory(tmp_path, monkeypatch):
+@pytest.mark.parametrize(
+    ("provider_id", "operation_id", "expected_scope", "expected_prompt"),
+    (
+        ("github", "profile", "offline_access read:user", None),
+        ("google_drive", "files", "https://www.googleapis.com/auth/drive.metadata.readonly", "select_account consent"),
+    ),
+)
+def test_builtin_templates_and_configured_environment_factory(
+    tmp_path, monkeypatch, provider_id, operation_id, expected_scope, expected_prompt
+):
     templates = builtin_providers()
     for provider in templates:
         provider.validate()
         assert all(op.read_only for op in provider.operations)
     config = tmp_path / "providers.json"
     config.write_text(
-        json.dumps({"providers": {"github": {"client_id_env": "TEST_CLIENT_ID", "client_secret_env": "TEST_CLIENT_SECRET"}}}),
+        json.dumps({"providers": {provider_id: {"client_id_env": "TEST_CLIENT_ID", "client_secret_env": "TEST_CLIENT_SECRET"}}}),
         encoding="utf-8",
     )
     monkeypatch.setenv("ECHO_ADK_CONNECTIONS_CONFIG", str(config))
@@ -656,13 +665,15 @@ def test_builtin_templates_and_configured_environment_factory(tmp_path, monkeypa
     try:
         catalog = manager.catalog()
         assert catalog["configured"] is True
-        assert [p["id"] for p in catalog["providers"] if p["configured"]] == ["github"]
+        assert [p["id"] for p in catalog["providers"] if p["configured"]] == [provider_id]
         assert "configured-secret" not in json.dumps(catalog)
         assert "configured-client" not in json.dumps(catalog)
-        receipt = manager.start("bot-a", "github", ["profile"])
+        receipt = manager.start("bot-a", provider_id, [operation_id])
         query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(receipt["authorization_url"]).query))
-        assert query["scope"] == "offline_access read:user"
+        assert query["scope"] == expected_scope
         assert query["redirect_uri"] == "https://prime.example/bots-oauth-callback.html"
+        assert query.get("prompt") == expected_prompt
+        assert "login_hint" not in query
         monkeypatch.delenv("TEST_VAULT_KEY")
         assert manager.catalog()["configured"] is False
     finally:

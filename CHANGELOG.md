@@ -40,6 +40,9 @@ All notable changes to echo-adk. The format follows Keep a Changelog; versions f
 
 ### Fixed
 
+- New Google Drive connections request explicit account selection together with offline
+  consent, so owners with multiple signed-in accounts can choose the intended account.
+  Existing configuration-fingerprint checks remain enforced; no account is hardcoded.
 - Wall budgets are rechecked after model, SDK, catalog, and durable final writes. Late results preserve
   actual spend and completed receipts but return `budget_exceeded` with a `FAIL` proof. Built-in I/O waits
   narrow to the remaining allowance without mutating shared transports; unknown costs remain reserved.

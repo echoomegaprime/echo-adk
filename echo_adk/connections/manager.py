@@ -144,7 +144,17 @@ class ConnectionManager:
 
     def list(self, bot_id: str) -> list[dict]:
         self._bot(bot_id)
-        return self.store.list(self.owner_id, bot_id) if self.store is not None else []
+        if self.store is None:
+            return []
+        connections = []
+        for public in self.store.list(self.owner_id, bot_id):
+            try:
+                connections.append(self.get(bot_id, public["id"]))
+            except ConnectionError as exc:
+                # Another store handle may prune expired consent after the snapshot.
+                if exc.code != "connection_not_found":
+                    raise
+        return connections
 
     def has_resources(self, bot_id: str) -> bool:
         """Metadata-only rollback guard, including incomplete owner consent."""
@@ -159,7 +169,26 @@ class ConnectionManager:
         identifier(connection_id, "connection")
         if self.store is None:
             raise ConnectionError("connection_not_found", "Connection not found for this bot.", 404)
-        return self.store.get(self.owner_id, bot_id, connection_id)[0]
+        return self._readiness(*self.store.get(self.owner_id, bot_id, connection_id))
+
+    def _readiness(self, public: dict, binding: str) -> dict:
+        """Project configuration drift without changing durable consent or credentials."""
+        if public["status"] not in ("pending", "connected"):
+            return public
+        try:
+            self._binding(public, binding)
+        except ConnectionError as exc:
+            if exc.code == "connection_configuration_changed":
+                return {
+                    **public,
+                    "status": "reauth_required",
+                    "last_error": {
+                        "error": exc.code,
+                        "message": "Provider configuration changed; review this connection and obtain fresh owner consent.",
+                        "outcome_unknown": False,
+                    },
+                }
+        return public
 
     def _binding(self, public: dict, binding: str) -> tuple[Provider, OAuthClient]:
         provider = self._provider(public["provider_id"])

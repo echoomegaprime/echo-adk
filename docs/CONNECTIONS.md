@@ -58,6 +58,50 @@ The referenced client-secret values are read only inside the host. No API accept
 
 Google may require consent-screen configuration, permitted test users, or verification for the chosen app and scope. GitHub's actual token response determines whether refresh is available. A successful local fixture test does not replace provider app registration or a real owner's consent.
 
+Each new Google connection explicitly requests the account chooser and consent with
+`prompt=select_account consent`. The owner can choose among signed-in accounts instead of
+the app silently relying on the browser's current Google account; no account email or
+`login_hint` is hardcoded. This applies when starting new consent, not to ordinary reads or
+refreshes of an admitted connection. Google still controls any required sign-in or presence
+step. Because provider consent settings are part of the existing configuration fingerprint,
+connections created with the earlier consent-only template require new consent after this
+template change; no existing token is automatically moved to another account.
+
+### Migrating earlier Google consent
+
+The prompt change invalidates the existing provider fingerprint for both connected grants
+and pending consent. Invocation, refresh, and callback completion refuse the earlier
+fingerprint with `connection_configuration_changed` before contacting Google. Inspecting
+those records through `get` or `list` presents `status: "reauth_required"` and a fixed
+`last_error` asking the owner to review the connection and obtain fresh consent. This is
+a derived view: reading metadata does not rewrite the stored fingerprint, status, tokens,
+PKCE verifier, state, or owner/bot/connection identity. Previously failed, disconnected, or
+reauthorization-required records retain their existing status and error details. If host
+configuration or credentials are unavailable, metadata remains readable without labelling
+that unavailability as a fingerprint mismatch; use the catalog and operation refusal to
+diagnose readiness.
+
+Review migration at the Google account and OAuth app/project level before cleanup.
+Google revocation may invalidate sibling connections using that same account/project,
+including a replacement authorized before the old connection is disconnected. Complete
+any explicitly approved provider cleanup before authorizing replacement connections for
+the affected account/project. A bot-specific local record does not make provider revocation
+bot-specific. Public records do not contain a verified Google account identifier, so the
+owner must establish which account is involved through the provider consent/settings UI
+and the host's app configuration.
+
+Fresh consent always creates a new connection ID without overwriting or reassigning an
+earlier granted connection or its encrypted credentials. Normal retention cleanup may
+still remove expired unconsumed consent and excess inactive, credential-free records.
+The new ID must be explicitly admitted wherever
+worker permissions refer to a connection. Existing subscriptions retain their original
+connection IDs; recreate subscriptions for the replacement connection, review them, and
+enable them explicitly. There is no in-place subscription connection-rebind operation.
+Create, enable, and fresh-poll prechecks reject a stale connection with
+`connection_not_ready` without provider I/O. Already persisted subscription deliveries
+retain their existing outbox/recovery behavior. No migration step authorizes an account,
+revokes a provider grant, or retargets a subscription automatically.
+
 ## Owner flow and callable facade
 
 The API integration constructs `from_env(state_dir, require_bot, owner_id="prime-owner")`. `owner_id` is a server-side identity, not a request argument. `require_bot(bot_id)` must raise for an absent or inaccessible bot. The outer Prime owner session or an authenticated SDK host remains responsible for owner authentication; this library is not a login system.
@@ -65,8 +109,8 @@ The API integration constructs `from_env(state_dir, require_bot, owner_id="prime
 | Method | Result / behavior |
 | --- | --- |
 | `catalog()` | `{configured, providers}` with operation schemas and unavailable reasons. `configured` means host configuration is available, not that an account has consented. |
-| `list(bot_id)` | Public connection records for that bot. |
-| `get(bot_id, connection_id)` | One public record; cross-bot access returns not found. |
+| `list(bot_id)` | Public connection records for that bot, with a derived reauthorization status when an active consent fingerprint has changed. |
+| `get(bot_id, connection_id)` | One public record with the same readiness projection; cross-bot access returns not found. |
 | `start(bot_id, provider_id, operation_ids)` | `{connection, authorization_url, expires_at}` for owner consent. Scopes are derived from selected operations, and the host callback is fixed. |
 | `complete_callback(state, code)` | Resolves the bot and connection from owner-bound server state, consumes it once, exchanges the code, and returns a connected public record. |
 | `complete(bot_id, connection_id, state, code, redirect_uri=None)` | Equivalent explicit adapter; every supplied identity/redirect must match the original consent. |

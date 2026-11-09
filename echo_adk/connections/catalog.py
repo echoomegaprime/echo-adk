@@ -254,7 +254,7 @@ def builtin_providers() -> tuple[Provider, ...]:
             revocation_effect=(
                 "Google revocation removes the app/project grant and may disconnect other bots using that same account and OAuth app."
             ),
-            authorization_extra={"access_type": "offline", "prompt": "consent", "include_granted_scopes": "false"},
+            authorization_extra={"access_type": "offline", "prompt": "select_account consent", "include_granted_scopes": "false"},
             documentation_url="https://developers.google.com/identity/protocols/oauth2/web-server",
             operations=(
                 Operation(

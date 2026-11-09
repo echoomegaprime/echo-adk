@@ -43,6 +43,22 @@ from inside this service. That is the intended FORGE posture; CLI lanes are for 
 `ReadWritePaths` covers the state dir and `/home/forge/echo-adk/agents` because `POST/PUT/DELETE /agents`
 write `<agents-dir>/<name>.json`.
 
+### OAuth connector egress
+
+The default loopback-only unit does not provide direct access to external OAuth
+token, API, or revocation endpoints. A browser displaying Google's account chooser
+does not prove that the worker can complete the token exchange or refresh a grant.
+Before enabling connectors, verify the actual service's approved outbound path,
+including any existing host-configured loopback HTTPS proxy, against the fixed
+provider endpoints in `echo_adk/connections/catalog.py`. Retain TLS verification,
+bounded requests, redirect refusal, and the existing host permission boundaries.
+
+Treat any required service-network or proxy change as a separate reviewed deployment
+action. Do not remove the loopback restriction as an incidental part of a consent
+UI fix. Record the effective service configuration and prove token, API, refresh,
+and revocation reachability through the approved path during provider acceptance;
+do not print credentials, authorization codes, or callback query strings as evidence.
+
 ## Verify
 
 ```bash

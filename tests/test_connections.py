@@ -26,6 +26,7 @@ from echo_adk.connections import (
     OAuthClient,
     Operation,
     Provider,
+    SubscriptionManager,
     Vault,
     builtin_providers,
     from_env,
@@ -197,8 +198,26 @@ def fixture(tmp_path):
     server.close()
 
 
-def connect(manager, server, bot="bot-a", operations=None):
-    started = manager.start(bot, "fixture", operations or ["records"])
+@pytest.fixture
+def google_fixture(fixture):
+    manager, server, *_ = fixture
+    template = next(provider for provider in builtin_providers() if provider.id == "google_drive")
+    provider = replace(
+        template,
+        authorization_url=server.origin + "/authorize",
+        token_url=server.origin + "/token",
+        revoke_url=server.origin + "/revoke",
+        operations=tuple(replace(operation, url=server.origin + "/api/data") for operation in template.operations),
+        allow_loopback_http=True,
+    )
+    manager.providers = {provider.id: provider}
+    manager.clients = {provider.id: manager.clients["fixture"]}
+    server.token_override = {"scope": "https://www.googleapis.com/auth/drive.metadata.readonly"}
+    return fixture
+
+
+def connect(manager, server, bot="bot-a", operations=None, *, provider_id="fixture"):
+    started = manager.start(bot, provider_id, operations or ["records"])
     consent = server.consent(started)
     connected = manager.complete_callback(**consent)
     return connected, started, consent
@@ -515,6 +534,202 @@ def test_ciphertext_is_bound_to_bot_and_permission_metadata(fixture):
     assert server.count("/api/data") == 0 and server.count("/api/other") == 0
 
 
+@pytest.mark.parametrize("read", ["get", "list"])
+@pytest.mark.parametrize("pending", [False, True])
+def test_configuration_drift_is_projected_without_mutating_grant(fixture, read, pending):
+    manager, server, *_ = fixture
+    if pending:
+        connection = manager.start("bot-a", "fixture", ["records"])["connection"]
+    else:
+        connection, *_ = connect(manager, server)
+    original = manager.providers["fixture"]
+    before = tuple(manager.store._db.execute("SELECT * FROM connections WHERE id=?", (connection["id"],)).fetchone())
+    calls = len(server.calls)
+    manager.providers["fixture"] = replace(original, authorization_extra={"prompt": "select_account consent"})
+
+    public = manager.get("bot-a", connection["id"]) if read == "get" else manager.list("bot-a")[0]
+
+    assert public["status"] == "reauth_required"
+    assert public["last_error"] == {
+        "error": "connection_configuration_changed",
+        "message": "Provider configuration changed; review this connection and obtain fresh owner consent.",
+        "outcome_unknown": False,
+    }
+    assert tuple(manager.store._db.execute("SELECT * FROM connections WHERE id=?", (connection["id"],)).fetchone()) == before
+    assert len(server.calls) == calls
+    manager.providers["fixture"] = original
+    assert manager.get("bot-a", connection["id"])["status"] == ("pending" if pending else "connected")
+
+
+@pytest.mark.parametrize("status", ["disconnected", "error", "reauth_required"])
+def test_configuration_projection_preserves_existing_failure_and_disconnection(fixture, status):
+    manager, server, *_ = fixture
+    if status == "error":
+        server.token_override = {"scope": "records.read admin"}
+        started = manager.start("bot-a", "fixture", ["records"])
+        consent = server.consent(started)
+        assert_error("scope_mismatch", manager.complete_callback, consent["state"], consent["code"])
+        connection = started["connection"]
+    else:
+        connection, *_ = connect(manager, server)
+        if status == "disconnected":
+            manager.disconnect("bot-a", connection["id"])
+        else:
+            server.token_override = {"scope": "records.read admin"}
+            assert_error("scope_mismatch", manager.refresh, "bot-a", connection["id"])
+    original = manager.get("bot-a", connection["id"])
+    before = tuple(manager.store._db.execute("SELECT * FROM connections WHERE id=?", (connection["id"],)).fetchone())
+    calls = len(server.calls)
+    manager.providers["fixture"] = replace(manager.providers["fixture"], authorization_extra={"prompt": "select_account consent"})
+
+    assert manager.get("bot-a", connection["id"]) == original
+    assert manager.list("bot-a") == [original]
+    assert original["status"] == status
+    assert tuple(manager.store._db.execute("SELECT * FROM connections WHERE id=?", (connection["id"],)).fetchone()) == before
+    assert len(server.calls) == calls
+
+
+def test_connection_list_tolerates_expired_consent_pruned_during_read(fixture, monkeypatch):
+    manager, server, clock, path, key, _ = fixture
+    pending = manager.start("bot-a", "fixture", ["records"])["connection"]
+    second = ConnectionManager(
+        store=ConnectionStore(path, Vault(lambda: key)),
+        clients=manager.clients,
+        redirect=manager.redirect,
+        require_bot=lambda _: None,
+        providers=tuple(manager.providers.values()),
+        clock=manager.clock,
+    )
+    original_list = manager.store.list
+
+    def prune_after_snapshot(owner, bot):
+        snapshot = original_list(owner, bot)
+        clock[0] += 600
+        second.start(bot, "fixture", ["records"])
+        return snapshot
+
+    monkeypatch.setattr(manager.store, "list", prune_after_snapshot)
+    try:
+        assert manager.list("bot-a") == []
+        remaining = original_list(manager.owner_id, "bot-a")
+        assert len(remaining) == 1 and remaining[0]["id"] != pending["id"]
+        assert server.calls == []
+    finally:
+        second.close()
+
+
+def test_connection_list_preserves_bot_authorization_failure_during_read(fixture, monkeypatch):
+    manager, server, _, _, _, bots = fixture
+    manager.start("bot-a", "fixture", ["records"])
+    original_list = manager.store.list
+
+    def remove_bot_after_snapshot(owner, bot):
+        snapshot = original_list(owner, bot)
+        bots.remove(bot)
+        return snapshot
+
+    monkeypatch.setattr(manager.store, "list", remove_bot_after_snapshot)
+    assert_error("bot_not_found", manager.list, "bot-a")
+    assert server.calls == []
+
+
+@pytest.mark.parametrize(
+    "missing,expected_error",
+    [
+        ("provider", "provider_not_found"),
+        ("client", "provider_not_configured"),
+        ("secret", "provider_not_configured"),
+        ("redirect", "connections_unavailable"),
+        ("key", "credential_store_unavailable"),
+    ],
+)
+def test_configuration_projection_keeps_metadata_readable_when_host_is_unavailable(fixture, monkeypatch, missing, expected_error):
+    manager, server, *_ = fixture
+    connection, *_ = connect(manager, server)
+    original = manager.get("bot-a", connection["id"])
+    before = tuple(manager.store._db.execute("SELECT * FROM connections WHERE id=?", (connection["id"],)).fetchone())
+    calls = len(server.calls)
+    manager.providers["fixture"] = replace(manager.providers["fixture"], authorization_extra={"prompt": "select_account consent"})
+    if missing == "provider":
+        manager.providers.clear()
+    elif missing == "client":
+        manager.clients.clear()
+    elif missing == "secret":
+        manager.clients["fixture"] = OAuthClient("fixture-client", lambda: None)
+    elif missing == "redirect":
+        manager.redirect = None
+    else:
+        monkeypatch.setattr(manager.store.vault, "_key_provider", lambda: None)
+
+    assert manager.get("bot-a", connection["id"]) == original
+    assert manager.list("bot-a") == [original]
+    assert_error(expected_error, manager.invoke, "bot-a", connection["id"], "records")
+    assert tuple(manager.store._db.execute("SELECT * FROM connections WHERE id=?", (connection["id"],)).fetchone()) == before
+    assert len(server.calls) == calls
+
+
+def test_google_prompt_change_refuses_existing_grants_and_pending_callbacks_before_network(google_fixture):
+    manager, server, *_ = google_fixture
+    current = manager.providers["google_drive"]
+    manager.providers["google_drive"] = replace(current, authorization_extra={**current.authorization_extra, "prompt": "consent"})
+    connected, *_ = connect(manager, server, operations=["files"], provider_id="google_drive")
+    pending = manager.start("bot-b", "google_drive", ["files"])
+    consent = server.consent(pending)
+    before = [tuple(row) for row in manager.store._db.execute("SELECT * FROM connections ORDER BY id")]
+    calls = len(server.calls)
+    manager.providers["google_drive"] = current
+
+    assert manager.get("bot-a", connected["id"])["status"] == "reauth_required"
+    assert manager.list("bot-b")[0]["status"] == "reauth_required"
+    for function, args in (
+        (manager.invoke, ("bot-a", connected["id"], "files")),
+        (manager.refresh, ("bot-a", connected["id"])),
+        (manager.complete_callback, (consent["state"], consent["code"])),
+    ):
+        error = assert_error("connection_configuration_changed", function, *args)
+        assert error.status == 409
+        assert error.message == "Provider configuration changed; disconnect and obtain fresh owner consent."
+    assert [tuple(row) for row in manager.store._db.execute("SELECT * FROM connections ORDER BY id")] == before
+    assert len(server.calls) == calls
+
+
+def test_google_reconsent_preserves_old_connection_and_subscription_targets(google_fixture, tmp_path):
+    manager, server, clock, *_ = google_fixture
+    current = manager.providers["google_drive"]
+    manager.providers["google_drive"] = replace(current, authorization_extra={**current.authorization_extra, "prompt": "consent"})
+    old, *_ = connect(manager, server, operations=["files"], provider_id="google_drive")
+    deliveries = []
+    subscriptions = SubscriptionManager(
+        tmp_path / "migration-subscriptions",
+        manager,
+        lambda bot: None,
+        lambda *args: deliveries.append(args),
+        clock=lambda: clock[0],
+    )
+    try:
+        subscription = subscriptions.create("bot-a", old["id"], "files", {}, 60)
+        subscriptions.set_enabled("bot-a", subscription["id"], True)
+        before = tuple(manager.store._db.execute("SELECT * FROM connections WHERE id=?", (old["id"],)).fetchone())
+        manager.providers["google_drive"] = current
+        calls = len(server.calls)
+        fresh = manager.start("bot-a", "google_drive", ["files"])
+        assert fresh["connection"]["id"] != old["id"]
+        assert_error("connection_not_ready", manager.invoke, "bot-a", fresh["connection"]["id"], "files")
+        assert len(server.calls) == calls
+        connected = manager.complete_callback(**server.consent(fresh))
+        assert connected["status"] == "connected"
+        assert tuple(manager.store._db.execute("SELECT * FROM connections WHERE id=?", (old["id"],)).fetchone()) == before
+        assert len(manager.list("bot-a")) == 2
+        calls = len(server.calls)
+
+        assert_error("connection_not_ready", subscriptions.set_enabled, "bot-a", subscription["id"], True)
+        assert subscriptions.poll_due("bot-a")[0]["status"] == "error"
+        assert subscriptions.get("bot-a", subscription["id"])["connection_id"] == old["id"]
+        assert len(server.calls) == calls and deliveries == []
+    finally:
+        subscriptions.close()
+
+
 def test_configuration_drift_and_deleted_bot_refuse_network(fixture):
     manager, server, _, _, _, bots = fixture
     connection, *_ = connect(manager, server)
@@ -672,8 +887,20 @@ def test_builtin_templates_and_configured_environment_factory(
         query = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(receipt["authorization_url"]).query))
         assert query["scope"] == expected_scope
         assert query["redirect_uri"] == "https://prime.example/bots-oauth-callback.html"
+        assert query["response_type"] == "code" and query["client_id"] == "configured-client"
         assert query.get("prompt") == expected_prompt
-        assert "login_hint" not in query
+        assert query["code_challenge_method"] == "S256"
+        assert "login_hint" not in query and "code_verifier" not in query
+        row = manager.store._db.execute("SELECT verifier,state_hash FROM connections WHERE id=?", (receipt["connection"]["id"],)).fetchone()
+        verifier = manager.store.vault.open(
+            row["verifier"], owner="prime-owner", bot="bot-a", connection=receipt["connection"]["id"], purpose="pkce"
+        )["verifier"]
+        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
+        assert query["code_challenge"] == challenge and len(challenge) == 43
+        assert row["state_hash"] == hashlib.sha256(query["state"].encode()).hexdigest()
+        if provider_id == "google_drive":
+            assert query["access_type"] == "offline"
+            assert query["include_granted_scopes"] == "false"
         monkeypatch.delenv("TEST_VAULT_KEY")
         assert manager.catalog()["configured"] is False
     finally:

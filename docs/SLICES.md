@@ -11,6 +11,13 @@ Legend: `[x]` delivered in this branch, `[~]` partially delivered (what is missi
   factory regression covers both built-in providers. This does not establish live app ownership,
   actual consent, or production callback readiness.
 
+- [x] **Consent configuration readiness:** connection reads surface the existing
+  `reauth_required` status when an otherwise available provider configuration no longer
+  matches a pending or connected grant. The projection preserves stored fingerprints,
+  credentials and connection identities; new consent always creates a separate connection.
+  Tests cover the Google consent-only transition, PKCE, unchanged grants and fixed
+  subscription targets. This does not establish live Google acceptance or release readiness.
+
 - [x] **1. echo-adk repo bootstrap** - `pyproject` (py >= 3.10, zero-dep core, extras `adk`, `dev`), CI lint+test
   on 3.10/3.12, `SECURITY.md` stating the five rules, MIT license, README, CONTRIBUTING, CHANGELOG.
   *Deviation:* not started from `echo-repo-template`; `python -m echo_adk doctor` is replaced by

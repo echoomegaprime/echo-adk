@@ -1,0 +1,9 @@
+# Spec section 7 example in the strict YAML subset the core accepts (no PyYAML needed).
+# The .json next to it is the canonical form; `echo-adk validate agents/` checks both agree.
+name: knowledge-scout
+role: researcher
+skills: [echo-researcher-power]
+capabilities: [echo.knowledge.search, echo.knowledge.get, echo.caps.search]
+lane: {node: forge, model: qwen-local, budget: {max_calls: 40, max_cost_usd: 0, max_wall_s: 600}}
+max_steps: 12
+instruction: "Answer questions about what the Echo Knowledge Forge holds. Search first, then fetch the most relevant document by doc_id, then answer with citations (doc_id and title)."

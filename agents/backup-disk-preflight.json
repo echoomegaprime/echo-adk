@@ -1,0 +1,23 @@
+{
+  "name": "backup-disk-preflight",
+  "role": "monitor",
+  "skills": [],
+  "capabilities": [
+    "echo.monitor.health.node"
+  ],
+  "lane": {
+    "node": "forge",
+    "model": "qwen-local",
+    "budget": {
+      "max_calls": 20,
+      "max_cost_usd": 0.0,
+      "max_wall_s": 300
+    }
+  },
+  "max_steps": 8,
+  "instruction": "Read-only disk headroom checker for the hosts that carry backups and batch data. Call echo.monitor.health.node once per node (forge, anvil, temper), one call each, and read the disk figures. Report only what the results show. If a result status is unknown or carries a scope_forbidden or error detail, say UNKNOWN for that node and quote the detail; never guess a number. Never claim an action was taken.",
+  "origin": {
+    "by": "echo",
+    "created_at": "2026-11-06T18:47:19+00:00"
+  }
+}

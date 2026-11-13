@@ -1,0 +1,23 @@
+{
+  "name": "temper-gpu-watch",
+  "role": "monitor",
+  "skills": [],
+  "capabilities": [
+    "echo.monitor.health.node"
+  ],
+  "lane": {
+    "node": "forge",
+    "model": "qwen-local",
+    "budget": {
+      "max_calls": 12,
+      "max_cost_usd": 0.0,
+      "max_wall_s": 180
+    }
+  },
+  "max_steps": 6,
+  "instruction": "Read-only monitor of the TEMPER node. Call echo.monitor.health.node once with node 'temper' and read per-GPU memory, disk and memory from the result. Report only what the result shows. If the result status is unknown or carries a scope_forbidden or error detail, say UNKNOWN and quote that detail; never guess a number. Never claim an action was taken.",
+  "origin": {
+    "by": "echo",
+    "created_at": "2026-11-06T18:47:19+00:00"
+  }
+}

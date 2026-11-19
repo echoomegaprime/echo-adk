@@ -20,6 +20,7 @@ from .. import __version__
 from ..core.log import get_logger
 from ..core.redact import redact
 from ..core.types import ValidationError
+from .fielddesk import fielddesk_result
 from .service import AdkService, ApiError
 
 log = get_logger("http")
@@ -30,6 +31,7 @@ NAME = r"(?P<name>[a-z0-9][a-z0-9-]{0,63})"
 
 Route = tuple[str, re.Pattern[str], str]
 ROUTES: list[Route] = [
+    ("GET", re.compile(r"^/pilots/fielddesk-followups/result$"), "fielddesk_result"),
     ("GET", re.compile(r"^/health$"), "health"),
     ("GET", re.compile(r"^/agents$"), "agents"),
     ("GET", re.compile(rf"^/agents/{NAME}$"), "agent"),
@@ -154,6 +156,8 @@ class Handler(BaseHTTPRequestHandler):
         query: dict[str, list[str]],
         body: Any,
     ) -> tuple[int, Any]:
+        if name == "fielddesk_result":
+            return 200, fielddesk_result(service)
         if name == "health":
             return 200, service.health()
         if name == "agents":

@@ -4,6 +4,7 @@
 Reads data/ground_truth_key.json (never read by the driver), state.json and
 the drafts directory. Writes score.json and prints a summary.
 """
+
 import json
 import os
 import sys
@@ -34,8 +35,11 @@ def main():
         correct += 1 if ok else 0
         confusion[f"{truth}->{got}"] = confusion.get(f"{truth}->{got}", 0) + 1
         per[aid] = {
-            "truth": truth, "got": got, "correct": ok,
-            "status": entry.get("status"), "run_id": entry.get("run_id"),
+            "truth": truth,
+            "got": got,
+            "correct": ok,
+            "status": entry.get("status"),
+            "run_id": entry.get("run_id"),
             "attempts": entry.get("attempts"),
             "quote_in_note": entry.get("quote_in_note"),
             "answered_model": entry.get("answered_model"),
@@ -43,8 +47,7 @@ def main():
         }
 
     key_promise = sorted(a for a, v in key.items() if v == "PROMISE")
-    model_promise = sorted(a for a, e in state["appointments"].items()
-                           if e.get("decision") == "PROMISE")
+    model_promise = sorted(a for a, e in state["appointments"].items() if e.get("decision") == "PROMISE")
     score = {
         "decisions_correct": correct,
         "decisions_total": len(key),
@@ -55,19 +58,29 @@ def main():
         "drafts_match_model_promise_exactly": draft_ids == model_promise,
         "drafts_match_key_promise_exactly": draft_ids == key_promise,
         "duplicate_draft_files": len(draft_ids) != len(set(draft_ids)),
-        "every_draft_has_source_note": all(
-            "Source note (verbatim):" in open(os.path.join(drafts_dir, fn)).read()
-            for fn in draft_files),
-        "quotes_verified_in_note": {
-            a: per[a]["quote_in_note"] for a in per},
+        "every_draft_has_source_note": all("Source note (verbatim):" in open(os.path.join(drafts_dir, fn)).read() for fn in draft_files),
+        "quotes_verified_in_note": {a: per[a]["quote_in_note"] for a in per},
         "per_appointment": per,
     }
     with open(os.path.join(BASE, "score.json"), "w") as f:
         json.dump(score, f, indent=2)
-    print(json.dumps({k: score[k] for k in (
-        "decisions_correct", "decisions_total", "confusion",
-        "drafts_match_model_promise_exactly", "drafts_match_key_promise_exactly",
-        "duplicate_draft_files", "every_draft_has_source_note")}, indent=2))
+    print(
+        json.dumps(
+            {
+                k: score[k]
+                for k in (
+                    "decisions_correct",
+                    "decisions_total",
+                    "confusion",
+                    "drafts_match_model_promise_exactly",
+                    "drafts_match_key_promise_exactly",
+                    "duplicate_draft_files",
+                    "every_draft_has_source_note",
+                )
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

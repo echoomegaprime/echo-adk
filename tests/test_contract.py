@@ -88,7 +88,7 @@ def test_health_identity(api):
     assert status == 200 and headers["content-type"] == "application/json"
     assert body["ok"] is True and body["service"] == "echo-adk-api" and body["profile"] == PROFILE == "ECHO_ADK"
     assert body["version"] == __version__ and re.match(r"^\d+\.\d+\.\d+", body["version"])
-    assert body["agents"] == 3 and body["bots"] == 0 and body["runs_active"] == 0
+    assert body["agents"] == 8 and body["bots"] == 0 and body["runs_active"] == 0
 
 
 def test_unknown_route_and_method(api):
@@ -110,7 +110,7 @@ def test_loopback_only_bind(service):
 
 def test_agents_routes(api):
     status, _, body = http("GET", f"{api}/agents")
-    assert status == 200 and {a["name"] for a in body["agents"]} == {"knowledge-scout", "forge-steward", "paid-steward"}
+    assert status == 200 and {a["name"] for a in body["agents"]} == {"knowledge-scout", "forge-steward", "paid-steward", "backup-disk-preflight", "fleet-poller", "knowledge-refresh-auditor", "quench-metrics", "temper-gpu-watch"}
     for agent in body["agents"]:
         assert set(agent) >= {"name", "role", "skills", "capabilities", "lane", "max_steps", "source"}
         assert set(agent["lane"]) == {"node", "model", "budget"} and set(agent["lane"]["budget"]) == {

@@ -9,7 +9,7 @@ from tests.conftest import AGENTS_DIR, ROOT
 def test_validate_shipped_agents(capsys, tmp_path):
     code = main(["--state-dir", str(tmp_path), "validate", str(AGENTS_DIR)])
     out = json.loads(capsys.readouterr().out)
-    assert code == 0 and out["ok"] is True and {a["name"] for a in out["agents"]} == {"knowledge-scout", "forge-steward"}
+    assert code == 0 and out["ok"] is True and {a["name"] for a in out["agents"]} == {"knowledge-scout", "forge-steward", "backup-disk-preflight", "fleet-poller", "knowledge-refresh-auditor", "quench-metrics", "temper-gpu-watch"}
 
 
 def test_validate_reports_unknown_capabilities(capsys, tmp_path):

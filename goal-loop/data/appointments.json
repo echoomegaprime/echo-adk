@@ -1,0 +1,166 @@
+{
+  "goal": "Review today's FieldDesk appointments, find the customers I promised to follow up with, and draft each follow-up for my review.",
+  "date": "2026-11-19",
+  "appointments": [
+    {
+      "id": "FD-01",
+      "customer": "Alvarez",
+      "service": "gate repair",
+      "date": "2026-11-19",
+      "time": "09:00",
+      "note": "Gate latch still sticking after the adjustment. Told Mrs. Alvarez I'd call her Friday morning to confirm the parts came in and schedule the fix."
+    },
+    {
+      "id": "FD-02",
+      "customer": "Thompson",
+      "service": "mowing and overseeding quote",
+      "date": "2026-11-19",
+      "time": "09:40",
+      "note": "Finished the mow and edged the beds. Mr. Thompson asked about overseeding the thin spots; I said I'd send him a quote by tonight."
+    },
+    {
+      "id": "FD-03",
+      "customer": "Nguyen",
+      "service": "sprinkler repair",
+      "date": "2026-11-19",
+      "time": "10:15",
+      "note": "Replaced two broken heads and reset the timer. Promised I'd check back next week to make sure the pressure is holding on the back zone."
+    },
+    {
+      "id": "FD-04",
+      "customer": "Carter",
+      "service": "brush cleanup",
+      "date": "2026-11-19",
+      "time": "10:50",
+      "note": "Hauled the brush pile from the side yard. I told her I'd follow up in a few days with a price on grinding the stump."
+    },
+    {
+      "id": "FD-05",
+      "customer": "Ruiz",
+      "service": "fence estimate",
+      "date": "2026-11-19",
+      "time": "11:20",
+      "note": "Measured the full fence line and took photos of the leaning posts. Said I'd text him the estimate tomorrow once materials are priced."
+    },
+    {
+      "id": "FD-06",
+      "customer": "Patel",
+      "service": "maintenance service",
+      "date": "2026-11-19",
+      "time": "12:05",
+      "note": "Changed the filter and flushed the drain line. I promised to call the first week of December to book the next service so they don't have to remember."
+    },
+    {
+      "id": "FD-07",
+      "customer": "Johnson",
+      "service": "mowing (missed visit)",
+      "date": "2026-11-19",
+      "time": "12:40",
+      "note": "Gate code didn't work and nobody was home. Left a voicemail explaining, and told him on the message I'd try again tomorrow morning."
+    },
+    {
+      "id": "FD-08",
+      "customer": "Brooks",
+      "service": "tree trimming quote",
+      "date": "2026-11-19",
+      "time": "13:15",
+      "note": "Walked the property and marked the limbs over the roof. I said I'd get back to her with the trimming numbers after I check the crew schedule."
+    },
+    {
+      "id": "FD-09",
+      "customer": "Delgado",
+      "service": "mowing",
+      "date": "2026-11-19",
+      "time": "13:50",
+      "note": "Job done and paid in full on site. Customer said she'll call the office when she wants the next cut scheduled."
+    },
+    {
+      "id": "FD-10",
+      "customer": "Kim",
+      "service": "sprinkler install consult",
+      "date": "2026-11-19",
+      "time": "14:20",
+      "note": "She's waiting on a controller she ordered herself. She'll ring us when it arrives and book the install then."
+    },
+    {
+      "id": "FD-11",
+      "customer": "Foster",
+      "service": "deep clean",
+      "date": "2026-11-19",
+      "time": "14:55",
+      "note": "Deep clean complete, walkthrough done with the customer. She declined the recurring plan and said they'll reach out if they need us again."
+    },
+    {
+      "id": "FD-12",
+      "customer": "Hayes",
+      "service": "leaf removal",
+      "date": "2026-11-19",
+      "time": "15:25",
+      "note": "All leaves hauled off and the invoice is settled. He said no need to check back - he'll book online when he's ready for the next one."
+    },
+    {
+      "id": "FD-13",
+      "customer": "Ortiz",
+      "service": "pressure washing",
+      "date": "2026-11-19",
+      "time": "15:55",
+      "note": "Driveway and walkway washed. Customer will contact us in the spring if she wants the patio done too."
+    },
+    {
+      "id": "FD-14",
+      "customer": "Webb",
+      "service": "mowing (no access)",
+      "date": "2026-11-19",
+      "time": "16:20",
+      "note": "Gate code didn't work, couldn't mow. Left a note on the door with the office number asking them to call us to reschedule."
+    },
+    {
+      "id": "FD-15",
+      "customer": "Singh",
+      "service": "irrigation check",
+      "date": "2026-11-19",
+      "time": "16:50",
+      "note": "Timer reprogrammed and all six zones verified with the customer watching. Nothing pending; she has our number if anything looks off."
+    },
+    {
+      "id": "FD-16",
+      "customer": "Murphy",
+      "service": "fence stain consult",
+      "date": "2026-11-19",
+      "time": "17:15",
+      "note": "Customer decided to hold off on staining this year. Said they'll call us next spring. No follow-up needed from us."
+    },
+    {
+      "id": "FD-17",
+      "customer": "Lane",
+      "service": "lot cleanup consult",
+      "date": "2026-11-19",
+      "time": "17:40",
+      "note": "Talked about the back lot and the drainage ditch. Follow up at some point."
+    },
+    {
+      "id": "FD-18",
+      "customer": "Price",
+      "service": "mowing",
+      "date": "2026-11-19",
+      "time": "18:05",
+      "note": "He wants an update on the crew schedule sometime."
+    },
+    {
+      "id": "FD-19",
+      "customer": "Ross",
+      "service": "sprinkler issue",
+      "date": "2026-11-19",
+      "time": "18:30",
+      "note": "Mentioned the leak by the sidewalk again. Check on it later maybe."
+    },
+    {
+      "id": "FD-20",
+      "customer": "Tran",
+      "service": "tree work consult",
+      "date": "2026-11-19",
+      "time": "18:55",
+      "note": "She asked if someone could look at the dead limb when we're back in her area."
+    }
+  ]
+}

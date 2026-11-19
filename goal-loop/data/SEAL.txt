@@ -1,0 +1,6 @@
+Ground-truth key sealed before any run.
+sealed_at: 2026-11-19T10:32:13.275541+00:00
+file: ground_truth_key.json
+sha256: f27696720b4891f2749fc0e2d57038d74a7f04cfaa65adb236f7250dd07fdeea
+class_counts: {"PROMISE": 8, "NONE": 8, "AMBIGUOUS": 4}
+The driver never reads this file. Scoring happens after the run with score.py.

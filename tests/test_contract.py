@@ -110,7 +110,16 @@ def test_loopback_only_bind(service):
 
 def test_agents_routes(api):
     status, _, body = http("GET", f"{api}/agents")
-    assert status == 200 and {a["name"] for a in body["agents"]} == {"knowledge-scout", "forge-steward", "paid-steward", "backup-disk-preflight", "fleet-poller", "knowledge-refresh-auditor", "quench-metrics", "temper-gpu-watch"}
+    assert status == 200 and {a["name"] for a in body["agents"]} == {
+        "knowledge-scout",
+        "forge-steward",
+        "paid-steward",
+        "backup-disk-preflight",
+        "fleet-poller",
+        "knowledge-refresh-auditor",
+        "quench-metrics",
+        "temper-gpu-watch",
+    }
     for agent in body["agents"]:
         assert set(agent) >= {"name", "role", "skills", "capabilities", "lane", "max_steps", "source"}
         assert set(agent["lane"]) == {"node", "model", "budget"} and set(agent["lane"]["budget"]) == {

@@ -55,7 +55,15 @@ def test_frontmatter_parser_handles_quotes_and_folded_blocks():
 
 def test_shipped_agents_load_and_match_yaml_example():
     agents = load_agents_dir(AGENTS_DIR)
-    assert set(agents) == {"knowledge-scout", "forge-steward", "backup-disk-preflight", "fleet-poller", "knowledge-refresh-auditor", "quench-metrics", "temper-gpu-watch"}
+    assert set(agents) == {
+        "knowledge-scout",
+        "forge-steward",
+        "backup-disk-preflight",
+        "fleet-poller",
+        "knowledge-refresh-auditor",
+        "quench-metrics",
+        "temper-gpu-watch",
+    }
     scout_yaml = load_agent(ROOT / "docs" / "examples" / "knowledge-scout.yaml")
     scout_json = agents["knowledge-scout"]
     assert scout_yaml.to_dict() | {"source": ""} == scout_json.to_dict() | {"source": ""}

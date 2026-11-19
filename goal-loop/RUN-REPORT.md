@@ -52,3 +52,16 @@ Driver invocation 1 started 04:32:51 CT. At **04:37 CT**, with 3 appointments do
 ## Exact resume point / what's next
 
 The proof is **complete**; nothing is mid-flight. Natural next steps, none started: (1) open a PR for `agent/lyra-goal-loop-20261119` if Bob wants the loop in the ADK repo proper; (2) point the driver at a real FieldDesk export instead of synthetic data (same agent, same contract); (3) add a model pre-warm step and a PROMISE/AMBIGUOUS boundary example set to the instruction, targeting FD-17-class errors; (4) bank these 20 graded records as the seed of the "what has Echo learned" regression set for the future Echo-specific adapter milestone.
+
+## Recovering this completed pilot
+
+The loopback ADK API can serve the completed synthetic pilot to an authenticated owner workspace.
+Set `ECHO_ADK_FIELDDESK_PROOF_DIR` on the ADK service to the retained proof directory when activating the readback.
+`GET /pilots/fielddesk-followups/result` returns the immutable goal ID, score, and one record per synthetic
+appointment with the decision, original source note, deciding quote, optional draft, ADK run ID, and events digest.
+The response type `completed_pilot` identifies an earlier execution. Repeated reads of the same receipts are idempotent.
+
+The reader verifies the original fixture, scorer output, checkpoint, draft bytes, and all 20 local ADK proof chains.
+Missing inputs, unavailable runs, and digest mismatches return HTTP 503. This route accepts no path, prompt or
+execution options. It reads no sealed answer key and issues no model or worker requests. Keep the ADK endpoint
+loopback-only. The owner workspace must enforce seat admission before exposing these records.

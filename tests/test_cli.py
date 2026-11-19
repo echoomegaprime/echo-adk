@@ -21,6 +21,7 @@ def test_validate_shipped_agents(capsys, tmp_path):
             "knowledge-refresh-auditor",
             "quench-metrics",
             "temper-gpu-watch",
+            "lyra-test-goal-loop",
         }
     )
 

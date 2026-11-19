@@ -88,7 +88,7 @@ def test_health_identity(api):
     assert status == 200 and headers["content-type"] == "application/json"
     assert body["ok"] is True and body["service"] == "echo-adk-api" and body["profile"] == PROFILE == "ECHO_ADK"
     assert body["version"] == __version__ and re.match(r"^\d+\.\d+\.\d+", body["version"])
-    assert body["agents"] == 8 and body["bots"] == 0 and body["runs_active"] == 0
+    assert body["agents"] == 9 and body["bots"] == 0 and body["runs_active"] == 0
 
 
 def test_unknown_route_and_method(api):
@@ -119,6 +119,7 @@ def test_agents_routes(api):
         "knowledge-refresh-auditor",
         "quench-metrics",
         "temper-gpu-watch",
+        "lyra-test-goal-loop",
     }
     for agent in body["agents"]:
         assert set(agent) >= {"name", "role", "skills", "capabilities", "lane", "max_steps", "source"}

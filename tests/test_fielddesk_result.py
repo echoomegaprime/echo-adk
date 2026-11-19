@@ -29,8 +29,12 @@ def archive(tmp_path, monkeypatch):
     (tmp_path / "drafts").mkdir()
     fixture = {"goal": "synthetic goal", "appointments": [{"id": "FD-01", "note": "I will reply."}]}
     state = {"appointments": {"FD-01": {"run_id": run_id, "decision": "PROMISE", "source_quote": "will reply"}}}
-    files = {"data/appointments.json": json.dumps(fixture), "state.json": json.dumps(state),
-             "score.json": json.dumps({"decisions_correct": 1, "decisions_total": 1}), "drafts/FD-01.md": "draft"}
+    files = {
+        "data/appointments.json": json.dumps(fixture),
+        "state.json": json.dumps(state),
+        "score.json": json.dumps({"decisions_correct": 1, "decisions_total": 1}),
+        "drafts/FD-01.md": "draft",
+    }
     for name, data in files.items():
         (tmp_path / name).write_bytes(data.encode())
     hashes = {name: hashlib.sha256(data.encode()).hexdigest() for name, data in files.items()}
@@ -38,8 +42,14 @@ def archive(tmp_path, monkeypatch):
     monkeypatch.setenv("ECHO_ADK_FIELDDESK_PROOF_DIR", str(tmp_path))
     step = Envelope(run_id, 0, "model", "allowed", True, data={"answered": {"provider": "qwen-local", "model": fielddesk.MODEL}})
     proof = Proof.from_envelopes(run_id, "c" * 32, [step], "PASS").to_dict()
-    run = {"run_id": run_id, "agent": fielddesk.AGENT, "status": "done", "proof": proof,
-           "spent": {"cost_usd": 0}, "steps": [step.to_dict()]}
+    run = {
+        "run_id": run_id,
+        "agent": fielddesk.AGENT,
+        "status": "done",
+        "proof": proof,
+        "spent": {"cost_usd": 0},
+        "steps": [step.to_dict()],
+    }
     monkeypatch.setattr(fielddesk, "RUNS_DIGEST", fielddesk._digest({run_id: proof["events_sha256"]}))
     return tmp_path, run
 

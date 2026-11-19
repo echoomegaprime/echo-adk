@@ -59,7 +59,7 @@ def test_post_agent_creates_file_and_origin(api, service, agents_copy):
     assert saved["name"] == "prompt-scout" and saved["origin"] == body["origin"] and "source" not in saved
     assert http("GET", f"{api}/agents/prompt-scout")[2] == body
     assert "prompt-scout" in {a["name"] for a in http("GET", f"{api}/agents")[2]["agents"]}
-    assert http("GET", f"{api}/health")[2]["agents"] == 9
+    assert http("GET", f"{api}/health")[2]["agents"] == 10
     # the created definition runs like any other
     _, _, run = http("POST", f"{api}/runs", {"agent": "prompt-scout", "prompt": "go"})
     done = wait_for(

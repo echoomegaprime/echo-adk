@@ -78,17 +78,27 @@ def fielddesk_result(service: AdkService) -> dict[str, Any]:
                 raise ValueError("prior worker receipt drifted")
             checked_runs[run["run_id"]] = proof["events_sha256"]
             draft = files.get(f"drafts/{item_id}.md")
-            decisions.append({
-                "appointment_id": item_id, "decision": entry["decision"], "source_note": item["note"],
-                "deciding_quote": entry["source_quote"], "draft": draft.decode("utf-8") if draft is not None else None,
-                "run_id": run["run_id"], "events_sha256": proof["events_sha256"],
-            })
+            decisions.append(
+                {
+                    "appointment_id": item_id,
+                    "decision": entry["decision"],
+                    "source_note": item["note"],
+                    "deciding_quote": entry["source_quote"],
+                    "draft": draft.decode("utf-8") if draft is not None else None,
+                    "run_id": run["run_id"],
+                    "events_sha256": proof["events_sha256"],
+                }
+            )
         if _digest(checked_runs) != RUNS_DIGEST:
             raise ValueError("worker receipts do not match the completed pilot")
     except (OSError, KeyError, TypeError, ValueError, AttributeError, ApiError) as exc:
         raise ApiError(503, "pilot_unavailable", "The completed pilot files or ADK worker receipts could not be verified.") from exc
     return {
-        "kind": "completed_pilot", "goal_id": PILOT_DIGEST, "synthetic": True, "goal": fixture["goal"],
+        "kind": "completed_pilot",
+        "goal_id": PILOT_DIGEST,
+        "synthetic": True,
+        "goal": fixture["goal"],
         "score": {"correct": score["decisions_correct"], "total": score["decisions_total"]},
-        "model": MODEL, "decisions": decisions,
+        "model": MODEL,
+        "decisions": decisions,
     }

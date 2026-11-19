@@ -17,6 +17,7 @@ Design:
 - The driver NEVER reads the ground-truth key. Scoring is separate.
 - There is no send path anywhere in this loop: drafts are files for review.
 """
+
 import json
 import os
 import re
@@ -107,7 +108,7 @@ def parse_final(text):
     end = text.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("no DECISION line and no JSON object in final text")
-    obj = json.loads(text[start:end + 1])
+    obj = json.loads(text[start : end + 1])
     decision = str(obj.get("decision", "")).strip().upper()
     if decision not in DECISIONS:
         raise ValueError(f"bad decision: {decision!r}")
@@ -166,8 +167,7 @@ def answered_model(rec):
 
 def process(appt, state):
     aid = appt["id"]
-    entry = state["appointments"].setdefault(
-        aid, {"status": "pending", "attempts": 0, "run_id": None})
+    entry = state["appointments"].setdefault(aid, {"status": "pending", "attempts": 0, "run_id": None})
     if entry["status"] == "done":
         return
     inherited = set()
@@ -182,11 +182,15 @@ def process(appt, state):
             log(f"{aid}: harvesting run {run_id} (attempt {entry['attempts']})")
         else:
             entry["attempts"] += 1
-            resp = adk("POST", "/runs", {
-                "agent": AGENT,
-                "prompt": build_prompt(appt),
-                "budget": {"max_calls": 4, "max_cost_usd": 0.0, "max_wall_s": 600},
-            })
+            resp = adk(
+                "POST",
+                "/runs",
+                {
+                    "agent": AGENT,
+                    "prompt": build_prompt(appt),
+                    "budget": {"max_calls": 4, "max_cost_usd": 0.0, "max_wall_s": 600},
+                },
+            )
             run_id = resp["run_id"]
             entry["run_id"] = run_id
             entry["status"] = "run_started"
@@ -197,8 +201,7 @@ def process(appt, state):
         entry["proof_verdict"] = (rec.get("proof") or {}).get("verdict")
         entry["answered_model"] = answered_model(rec)
         if rec.get("status") != "done":
-            log(f"{aid}: run {run_id} ended status={rec.get('status')} "
-                f"error={rec.get('error')}")
+            log(f"{aid}: run {run_id} ended status={rec.get('status')} error={rec.get('error')}")
             entry["run_id"] = None
             if run_id in inherited:
                 inherited.discard(run_id)
@@ -235,9 +238,7 @@ def process(appt, state):
             entry["draft_write"] = how
         entry["status"] = "done"
         save_state(state)
-        log(f"{aid}: done decision={parsed['decision']} "
-            f"quote_in_note={entry['quote_in_note']} "
-            f"model={entry['answered_model']}")
+        log(f"{aid}: done decision={parsed['decision']} quote_in_note={entry['quote_in_note']} model={entry['answered_model']}")
         return
 
 
@@ -249,8 +250,7 @@ def main():
     state.setdefault("goal", dataset["goal"])
     state.setdefault("started_at", now())
     save_state(state)
-    log(f"driver start: {len(dataset['appointments'])} appointments, "
-        f"agent={AGENT}")
+    log(f"driver start: {len(dataset['appointments'])} appointments, agent={AGENT}")
     for appt in dataset["appointments"]:
         process(appt, state)
     done = sum(1 for e in state["appointments"].values() if e["status"] == "done")

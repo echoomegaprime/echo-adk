@@ -63,6 +63,7 @@ def test_shipped_agents_load_and_match_yaml_example():
         "knowledge-refresh-auditor",
         "quench-metrics",
         "temper-gpu-watch",
+        "lyra-test-goal-loop",
     }
     scout_yaml = load_agent(ROOT / "docs" / "examples" / "knowledge-scout.yaml")
     scout_json = agents["knowledge-scout"]

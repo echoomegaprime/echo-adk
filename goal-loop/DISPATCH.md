@@ -1,0 +1,9 @@
+# Private synthetic FieldDesk dispatch
+
+This staging process accepts one fixed 20-appointment workflow. Its only model is the resident FORGE Prometheus tag, identified by digest and 262144 context. The API binds to loopback and requires a server-side bearer. An owner-authorized workspace forwards requests. The browser never receives the service credential.
+
+`POST /pilots/fielddesk-followups/goals` accepts one field, `client_request_id`, a canonical UUID generated once per originating workspace turn. The first admission returns HTTP 202 with a goal ID. A repeated admission returns HTTP 200 and the same goal ID and saved state. `GET /pilots/fielddesk-followups/goals/{goal_id}` returns the original goal, fixture digest, status, per-item source note, deciding quote, optional draft, local model and ADK proof reference. Completion with any failed item is explicit.
+
+Run the two Python modules `echo_adk.pilots.fielddesk_server` and `echo_adk.pilots.fielddesk_worker` with the same private state directory, pinned synthetic input file, loopback port and mode-0600 credential file. The server additionally receives an agent directory containing the fixed pilot agent. Use each module’s `--help` for its arguments. Run one server per state directory. Only the independent reviewer needs the scoring program and sealed labels.
+
+Admission atomically records the goal and 20 deterministic run IDs. Each decision and its draft share a unique SQLite row. Repeated worker requests use the same ADK run. A restarted worker finds completed rows and retrieves the current run. A server restart recovers a queued run by its original ID. When a server dies during unacknowledged inference it records an explicit failed row and continues with other rows. Requests yield to busy GPUs before each item. The run is isolated from production services, uses an empty tool lease, has no outbound delivery capability, and invokes no cloud provider.

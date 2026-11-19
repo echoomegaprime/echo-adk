@@ -1,0 +1,1 @@
+{"contextFileName":"GEMINI.md","mcpServers":{"echo-adk":{"args":["forge","python3","/home/forge/echo-adk/plugins/shared/echo_adk_bridge.py"],"command":"ssh"}},"name":"echo-adk","version":"1.0.0"}

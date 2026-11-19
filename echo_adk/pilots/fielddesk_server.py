@@ -187,6 +187,21 @@ def read_token(path):
     return b"Bearer " + token
 
 
+def lock_server_state(state_dir):
+    # FORGE is Linux. A process exit, including SIGKILL, releases the advisory lock.
+    import fcntl
+
+    root = Path(state_dir)
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    lock = (root / "fielddesk-server.lock").open("a")
+    try:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock.close()
+        raise RuntimeError("another FieldDesk server owns this staging directory") from None
+    return lock
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--agents-dir", required=True)
@@ -196,6 +211,7 @@ def main():
     parser.add_argument("--port", type=int, required=True)
     args = parser.parse_args()
     os.umask(0o077)
+    state_lock = lock_server_state(args.state_dir)
     adk = AdkService(
         args.agents_dir,
         Path(args.state_dir) / "adk",
@@ -214,6 +230,7 @@ def main():
     finally:
         server.server_close()
         adk.close()
+        state_lock.close()
 
 
 if __name__ == "__main__":

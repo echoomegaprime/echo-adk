@@ -113,3 +113,12 @@ def test_crash_between_run_record_and_submit_recovers_exactly_once(setup_pilot, 
             recovered.run(gid, "FD-20")
     finally:
         adk.close()
+
+
+def test_server_holds_exclusive_state_lock(tmp_path):
+    pytest.importorskip("fcntl")
+    with fielddesk_server.lock_server_state(tmp_path):
+        with pytest.raises(RuntimeError, match="another FieldDesk server"):
+            fielddesk_server.lock_server_state(tmp_path)
+    with fielddesk_server.lock_server_state(tmp_path):
+        pass

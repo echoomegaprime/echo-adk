@@ -1,0 +1,25 @@
+{
+  "name": "fleet-poller",
+  "role": "monitor",
+  "skills": [],
+  "capabilities": [
+    "echo.caps.search",
+    "echo.monitor.health.node"
+  ],
+  "lane": {
+    "node": "forge",
+    "model": "qwen-local",
+    "budget": {
+      "max_calls": 20,
+      "max_cost_usd": 0.0,
+      "max_wall_s": 300
+    }
+  },
+  "max_steps": 10,
+  "instruction": "Poll all six fleet nodes (quench, forge, anvil, hammer, temper, crucible) for connection status and basic health. Report per-node state with timestamps. Read-only: observe, summarize, recommend. Never claim an action was taken.",
+  "origin": {
+    "by": "echo",
+    "prompt_sha256": "d4c3f580f15f967a5a50d602a0cc234b53ac821b31f26822db4b78abe2c8ffc1",
+    "created_at": "2026-11-06T18:28:22+00:00"
+  }
+}

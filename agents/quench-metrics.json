@@ -1,0 +1,25 @@
+{
+  "name": "quench-metrics",
+  "role": "monitor",
+  "skills": [],
+  "capabilities": [
+    "echo.caps.search",
+    "echo.monitor.health.node"
+  ],
+  "lane": {
+    "node": "forge",
+    "model": "qwen-local",
+    "budget": {
+      "max_calls": 12,
+      "max_cost_usd": 0.0,
+      "max_wall_s": 120
+    }
+  },
+  "max_steps": 6,
+  "instruction": "Run a read-only health check on the QUENCH host: uptime, load, memory, disk. Summarize findings with timestamps. Never claim an action was taken.",
+  "origin": {
+    "by": "echo",
+    "prompt_sha256": "d4c3f580f15f967a5a50d602a0cc234b53ac821b31f26822db4b78abe2c8ffc1",
+    "created_at": "2026-11-06T18:28:21+00:00"
+  }
+}

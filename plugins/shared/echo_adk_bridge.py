@@ -27,6 +27,7 @@ Stdlib only. No credential is read, held, or forwarded by this bridge:
 the contract service is loopback-only and reads its own gate key from
 its own environment on FORGE at call time.
 """
+
 import json
 import os
 import sys
@@ -41,9 +42,7 @@ PROTOCOL = "2024-11-05"
 def http(method, path, body=None, params=None):
     url = BASE + path
     if params:
-        qs = "&".join(
-            f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items() if v is not None
-        )
+        qs = "&".join(f"{k}={urllib.parse.quote(str(v))}" for k, v in params.items() if v is not None)
         if qs:
             url += "?" + qs
     data = None
@@ -221,9 +220,7 @@ TOOLS = [
             },
             "required": ["bot_id", "text"],
         },
-        "call": lambda a: http(
-            "POST", "/bots/" + a["bot_id"] + "/message", {"text": a["text"]}
-        ),
+        "call": lambda a: http("POST", "/bots/" + a["bot_id"] + "/message", {"text": a["text"]}),
     },
     {
         "name": "bot_messages",
@@ -253,9 +250,7 @@ TOOLS = [
                 "limit": {"type": "integer"},
             },
         },
-        "call": lambda a: http(
-            "GET", "/runs", params={"agent": a.get("agent"), "limit": a.get("limit")}
-        ),
+        "call": lambda a: http("GET", "/runs", params={"agent": a.get("agent"), "limit": a.get("limit")}),
     },
     {
         "name": "start_run",
@@ -309,7 +304,11 @@ TOOLS = [
     },
     {
         "name": "create_group",
-        "description": "Create an echoBot group chat (2 to 6 bots; groups exchange messages only, never state). Definition per contract docs/CONTRACT.md.",
+        "description": (
+            "Create an echoBot group chat (2 to 6 bots; groups exchange "
+            "messages only, never state). Definition per contract "
+            "docs/CONTRACT.md."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"definition": {"type": "object"}},
@@ -384,9 +383,7 @@ def handle(msg):
                 "jsonrpc": "2.0",
                 "id": mid,
                 "result": {
-                    "content": [
-                        {"type": "text", "text": f"missing argument: {e}"}
-                    ],
+                    "content": [{"type": "text", "text": f"missing argument: {e}"}],
                     "isError": True,
                 },
             }

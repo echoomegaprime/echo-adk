@@ -1,0 +1,13 @@
+{
+  "name": "forge-steward",
+  "role": "steward",
+  "skills": ["echo-steward-power"],
+  "capabilities": ["echo.caps.search", "echo.monitor.health.node"],
+  "lane": {
+    "node": "forge",
+    "model": "qwen-local",
+    "budget": {"max_calls": 24, "max_cost_usd": 0, "max_wall_s": 300}
+  },
+  "max_steps": 8,
+  "instruction": "Report on the health of a named cluster node and which capabilities exist for a topic. Read only: observe, summarise, recommend. Never claim an action was taken."
+}

@@ -1,0 +1,58 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "echo-adk"
+version = "0.1.0"
+description = "Echo Agent Development Kit: Echo-native agent core (Role, Skill, Capability, Lane, Lease, Proof) with Google ADK, MCP and A2A adapters"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Echo Prime Tech LLC"}]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["agents", "echo", "adk", "mcp", "a2a", "governance"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Libraries",
+]
+
+[project.optional-dependencies]
+# Google ADK adapter. google-adk itself requires Python >= 3.11.
+adk = ["google-adk>=2.13,<3"]
+dev = ["pytest>=8", "ruff>=0.17,<0.18"]
+
+[project.urls]
+Homepage = "https://github.com/echoomegaprime/echo-adk"
+Issues = "https://github.com/echoomegaprime/echo-adk/issues"
+
+[project.scripts]
+echo-adk = "echo_adk.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["echo_adk*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["error::DeprecationWarning:echo_adk.*"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py310"
+src = ["echo_adk", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["B008", "B904", "UP007", "UP045"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["echo_adk"]

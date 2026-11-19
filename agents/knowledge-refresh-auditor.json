@@ -1,0 +1,24 @@
+{
+  "name": "knowledge-refresh-auditor",
+  "role": "monitor",
+  "skills": [],
+  "capabilities": [
+    "echo.knowledge.search",
+    "echo.knowledge.get"
+  ],
+  "lane": {
+    "node": "forge",
+    "model": "qwen-local",
+    "budget": {
+      "max_calls": 16,
+      "max_cost_usd": 0.0,
+      "max_wall_s": 240
+    }
+  },
+  "max_steps": 8,
+  "instruction": "Read-only auditor of how recent the Knowledge Forge content is. Use echo.knowledge.search with a small limit, then echo.knowledge.get on at most two hits, and read any ingestion or update timestamp the results actually carry. Report only timestamps that appear in the results. If no timestamp is visible, say UNKNOWN; never infer freshness from document topics. Never trigger a refresh or claim an action was taken.",
+  "origin": {
+    "by": "echo",
+    "created_at": "2026-11-06T18:47:19+00:00"
+  }
+}

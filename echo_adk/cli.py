@@ -12,7 +12,7 @@ from typing import Any, Optional
 from . import __version__
 from .agents import load_agent, load_agents_dir
 from .core.broker import GateBroker
-from .core.ledger import Ledger
+from .core.ledger import Ledger, verify_completion
 from .core.log import configure, get_logger
 from .core.models import ProviderUnavailable, build_model, parse_models_config
 from .core.policy import CapabilityRegistry
@@ -69,6 +69,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         sys.stderr.write(result.final_text + "\n")
     verdict = result.proof.verdict if result.proof else "UNKNOWN"
     return {"PASS": 0, "FAIL": 1}.get(verdict, 2)
+
+
+def cmd_verify_completion(args: argparse.Namespace) -> int:
+    proof = verify_completion(Path(args.state_dir), args.run_id, args.proof_sha256)
+    _emit({"run_id": proof.run_id, "lease_id": proof.lease_id, "events_sha256": proof.events_sha256, "verdict": proof.verdict})
+    return 0
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -156,6 +162,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--max-steps", type=int, default=None)
     run.add_argument("--full", action="store_true", help="print the whole run (steps, proof, spent)")
     run.set_defaults(func=cmd_run)
+
+    verify = sub.add_parser("verify-completion", help="verify the saved ledger against an independently retained PASS proof digest")
+    verify.add_argument("run_id")
+    verify.add_argument("--proof-sha256", required=True, help="SHA-256 of the caller's canonical JSON proof")
+    verify.set_defaults(func=cmd_verify_completion)
 
     validate = sub.add_parser("validate", help="validate an agents directory (or one file) and optional skills dir")
     validate.add_argument("path")

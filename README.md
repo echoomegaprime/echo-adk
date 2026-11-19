@@ -101,6 +101,20 @@ lease check -> [ model step -> one JSON Action -> policy -> broker -> Envelope -
   `PASS` (final within budget), `FAIL` (denied / provider unavailable / budget), `UNKNOWN` (gated, stopped,
   out of steps). The ledger is append-only JSONL under the state dir.
 
+### Verify a worker completion
+
+Retain the proof returned to the submitting client when the job finishes. Compute its SHA-256 with
+`sha256_hex(canonical_json(proof))` from `echo_adk.core.types`, and keep that digest independently
+of the worker state directory. A reviewer with read access can then run:
+
+```sh
+echo-adk --state-dir "$state_dir" verify-completion "$run_id" --proof-sha256 "$retained_digest"
+```
+
+Exit 0 means the expected PASS proof, ordered events, capability actions and successful final event
+agree for that run. Verification reads only the saved records. The caller supplies trust in the digest;
+an independently verified signature or external side-effect receipt requires its own verification.
+
 ## Models (R1, R2)
 
 | Lane model id | Path | Credentials |

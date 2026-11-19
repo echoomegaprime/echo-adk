@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .redact import redact_value
-from .types import Envelope, Proof, ValidationError, is_id, now_iso
+from .types import SHA256_HEX, Envelope, Proof, ValidationError, canonical_json, is_id, now_iso, sha256_hex
 
 _SCOPE = re.compile(r"^[a-z0-9][a-z0-9:_-]{0,96}$")
 
@@ -27,6 +27,36 @@ def safe_scope(scope: str) -> str:
     if not isinstance(scope, str) or not _SCOPE.match(scope):
         raise ValidationError("memory scope must match [a-z0-9][a-z0-9:_-]{0,96}")
     return scope.replace(":", "__")
+
+
+def verify_completion(state_dir: Path, run_id: str, proof_sha256: str) -> Proof:
+    """Verify a completed run using a canonical proof digest retained by its caller."""
+    if not is_id(run_id) or not SHA256_HEX.fullmatch(proof_sha256):
+        raise ValidationError("expected a run ID and a lowercase SHA-256 proof digest")
+    try:
+        raw_proof = json.loads((state_dir / "proofs" / f"{run_id}.json").read_text(encoding="utf-8"))
+        if sha256_hex(canonical_json(raw_proof)) != proof_sha256:
+            raise ValidationError("proof differs from the caller's retained digest")
+        proof = Proof.from_dict(raw_proof)
+        if proof.run_id != run_id or proof.verdict != "PASS":
+            raise ValidationError("proof does not record PASS for this run")
+        with (state_dir / "ledger" / f"{run_id}.jsonl").open(encoding="utf-8") as handle:
+            records = [json.loads(line) for line in handle if line.strip()]
+        if sha256_hex(canonical_json(records)) != proof.events_sha256:
+            raise ValidationError("event ledger differs from the retained proof")
+        events = [Envelope.from_dict(record) for record in records]
+        if not events or any(event.run_id != run_id for event in events):
+            raise ValidationError("event ledger must contain events for the same run")
+        if events[-1].kind != "final" or not events[-1].ok or events[-1].verdict != "allowed":
+            raise ValidationError("event ledger lacks a successful final event")
+        derived = Proof.from_envelopes(run_id, proof.lease_id, events, proof.verdict)
+        if derived.actions != proof.actions:
+            raise ValidationError("proof actions differ from the recorded capability actions")
+    except ValidationError:
+        raise
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ValidationError("completion evidence is missing or malformed") from exc
+    return proof
 
 
 class Ledger:
